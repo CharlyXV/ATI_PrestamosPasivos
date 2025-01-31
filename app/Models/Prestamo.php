@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Models;
-use App\Models\Productos;
+use App\Models\Producto;
 use App\Casts\LoanController;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -37,7 +37,7 @@ class Prestamo extends Model
     
     public function producto(): BeLongsTo
     {
-        return $this->beLongsTo(Producto::class);
+        return $this->beLongsTo(Productos::class);
         
     }
     
