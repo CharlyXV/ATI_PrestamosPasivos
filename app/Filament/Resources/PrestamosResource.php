@@ -107,7 +107,7 @@ class PrestamosResource extends Resource
                     Forms\Components\TextInput::make('monto_prestamo')
                     ->label('Monto Linea Prestamo')    
                     ->numeric()
-                    ->maxValue(42949672.92),
+                    ->maxValue(99999999999.99),
 
                     Forms\Components\Select::make('estado')
                     ->options([
@@ -160,15 +160,17 @@ class PrestamosResource extends Resource
                             
                             Forms\Components\TextInput::make('tasa_interes')
                             ->numeric()
+                            ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
                             ->inputMode('decimal')
-                            ->maxValue(999999.9999)
+                            ->maxValue(999999.99)
                             ->required(),
-    
+                            
                             Forms\Components\TextInput::make('tasa_spreed')
                             ->label('Spreed Interes')     
                             ->numeric()
+                            ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
                             ->required()
-                            ->maxValue(9999.999),
+                            ->maxValue(9999.99),
 
                             //
                     //schema 03
@@ -195,6 +197,7 @@ class PrestamosResource extends Resource
                         Forms\Components\TextInput::make('saldo_prestamo')
                         ->label('Saldo Linea')    
                         ->numeric()
+                        ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
                         ->maxValue(99999999999.99),
 
 
@@ -229,31 +232,43 @@ class PrestamosResource extends Resource
                                         //->label(false)
                                         ->numeric()
                                       //  ->weight('thin')
-                                        ->required(),
+                                        ->nullable(),
                                     Forms\Components\DatePicker::make('fecha_pago')
                                     ->label('Fecha de Pago')
-                                    ->required()
+                                    ->nullable()
                                     ->format('Y-m-d'),
                                     //  ->weight('thin')
                                         
                                     Forms\Components\TextInput::make('monto_principal')
                                         ->label('Monto Principal')
+                                        ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
                                       //  ->weight('thin')
+                                        ->maxValue(99999999999.99)
+                                        ->step(0.01)
                                         ->numeric()
-                                        ->required(),
+                                        ->nullable(),
                                     Forms\Components\TextInput::make('monto_interes')
                                         ->label('Monto Interés')
+                                        ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
                                         //->weight('thin')
+                                        ->maxValue(99999999999.99)
+                                        ->step(0.01)
                                         ->numeric()
-                                        ->required(),
+                                        ->nullable(),
                                     Forms\Components\TextInput::make('monto_seguro')
                                         ->label('Monto Seguro')
+                                        ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
                                         //->weight('thin')
+                                        ->maxValue(99999999999.99)
+                                        ->step(0.01)
                                         ->numeric()                                        
-                                        ->required(),
+                                        ->nullable(),
                                     Forms\Components\TextInput::make('monto_otros')
                                         ->label('Otros Montos')
+                                        ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
                                       //  ->weight('thin')
+                                       ->maxValue(99999999999.99)
+                                       ->step(0.01)
                                         ->numeric()                                        
                                         ->nullable(), // Puede ser opcional                        
                                 ])                               
@@ -280,10 +295,11 @@ class PrestamosResource extends Resource
                 
             ]); //schema 01
 
-
+            
             
             
     }
+/*
     public function mutateFormDataBeforeCreate(array $data): array
     {
         // Copia el valor de 'monto_seguro' al campo 'saldo_seguro'
@@ -324,7 +340,41 @@ class PrestamosResource extends Resource
 
 
         return $data;
+    } 
+
+
+*/
+
+public function mutateFormDataBeforeSave(array $data): array
+{
+    // Inicializar campos que pueden estar vacíos
+    $data['observaciones'] = $data['observaciones'] ?? 'Sin observaciones';
+    $data['monto_seguro'] = $data['monto_seguro'] ?? 0;
+    $data['monto_otros'] = $data['monto_otros'] ?? 0;
+    $data['monto_interes'] = $data['monto_interes'] ?? 0;
+    $data['monto_principal'] = $data['monto_principal'] ?? 0;
+    $data['saldo_seguro'] = $data['saldo_seguro'] ?? 0;
+    $data['saldo_interes'] = $data['saldo_interes'] ?? 0;
+    $data['saldo_principal'] = $data['saldo_principal'] ?? 0;
+    $data['saldo_otros'] = $data['saldo_otros'] ?? 0;
+    $data['saldo_prestamo'] = $data['saldo_prestamo'] ?? 0;
+    $data['monto_prestamo'] = $data['monto_prestamo'] ?? 0;
+     // Redondear valores numéricos a 2 decimales
+    $data['saldo_seguro'] = round($data['monto_seguro'], 2);
+    $data['saldo_interes'] = round($data['monto_interes'], 2);
+    $data['saldo_principal'] = round($data['monto_principal'], 2);
+    $data['saldo_otros'] = round($data['monto_otros'], 2);
+
+     // Obtener el saldo_prestamo de la tabla de 'prestamos' y redondearlo
+    $prestamo = Prestamo::find($data['id']);
+    $data['saldo_prestamo'] = $prestamo ? round($prestamo->saldo_prestamo, 2) : 0;
+
+     // Asegurarse de que saldo_prestamo no sea un valor extremadamente pequeño
+    if (abs($data['saldo_prestamo']) < 0.01) {
+        $data['saldo_prestamo'] = 0;
     }
+    return $data;
+}
 
     protected function handleRecordUpdate(Model $record, array $data): Model
     {
