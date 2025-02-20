@@ -238,7 +238,14 @@ class PrestamosResource extends Resource
                                     ->nullable()
                                     ->format('Y-m-d'),
                                     //  ->weight('thin')
-                                        
+                                    Forms\Components\TextInput::make('monto_total')
+                                    ->label('Monto Total')
+                                    ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
+                                  //  ->weight('thin')
+                                    ->maxValue(99999999999.99)
+                                    ->step(0.01)
+                                    ->numeric()
+                                    ->nullable(),
                                     Forms\Components\TextInput::make('monto_principal')
                                         ->label('Monto Principal')
                                         ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
@@ -267,83 +274,17 @@ class PrestamosResource extends Resource
                                         ->label('Otros Montos')
                                         ->default(fn ($record) => $record ? number_format($record->monto_prestamo, 2) : 0)
                                       //  ->weight('thin')
-                                       ->maxValue(99999999999.99)
-                                       ->step(0.01)
+                                        ->maxValue(99999999999.99)
+                                        ->step(0.01)
                                         ->numeric()                                        
                                         ->nullable(), // Puede ser opcional                        
                                 ])                               
-                                
-
-                               // ->space(1)
                                 ->columns(7)
-                               // ->minItems(1) // Mínimo un pago
-                               // ->maxItems(1) // Por ejemplo, máximo 12 pagos
-                                
-                            //    ->defaultItems(6) // Seis elementos por defecto   
-                              //  ->grid(1)     
-                                //->collapsed()
-                                ,                        
-                                //->createItemButtonLabel('Agregar Cuota') // Texto del botón para agregar cuotas
-                                //->deleteItemButtonLabel('Eliminar Cuota'), // Texto del botón para eliminar cuotas
-                        ])
-                
-                        ->collapsed()
-                       // ->columns(4),
-
-
-                          //schema 05
-                
-            ]); //schema 01
-
-            
-            
-            
-    }
-/*
-    public function mutateFormDataBeforeCreate(array $data): array
-    {
-        // Copia el valor de 'monto_seguro' al campo 'saldo_seguro'
-
-        logger('Datos antes de crear:', $data);
-
-        $data['saldo_seguro'] = $data['monto_seguro'];
-        $data['saldo_interes'] = $data['monto_interes'];
-        $data['saldo_principal'] = $data['monto_principal'];
-        $data['saldo_otros'] = $data['monto_otros'];
-
-        // Obtener el saldo_prestamo de la tabla de 'prestamos'
-        $prestamo = Prestamo::find($data['id']); // Usa la llave primaria o un criterio para encontrar el registro adecuado
-        $data['saldo_prestamo'] = $prestamo ? $prestamo->saldo_prestamo : 0; // Asigna el valor si existe, de lo contrario, 0
-
-    
-
-        return $data;
+                            ])
+                ->collapsed()
+            ]); 
     }
 
-    public function mutateFormDataBeforeSave(array $data): array
-    {
-     //  Log::info('Datos antes de crear:', $data);
-
-    logger('Datos antes de crear:', $data);
-
-        // Copia el valor al actualizar también        
-        $data['saldo_seguro'] = $data['monto_seguro'];
-        $data['saldo_interes'] = $data['monto_interes'];
-        $data['saldo_principal'] = $data['monto_principal'];
-        $data['saldo_otros'] = $data['monto_otros'];
-
-          // Obtener el saldo_prestamo al actualizar también
-        $prestamo = Prestamo::find($data['id']);
-        $data['saldo_prestamo'] = $prestamo ? $prestamo->saldo_prestamo : 0;
-
-        
-
-
-        return $data;
-    } 
-
-
-*/
 
 public function mutateFormDataBeforeSave(array $data): array
 {
@@ -359,12 +300,13 @@ public function mutateFormDataBeforeSave(array $data): array
     $data['saldo_otros'] = $data['saldo_otros'] ?? 0;
     $data['saldo_prestamo'] = $data['saldo_prestamo'] ?? 0;
     $data['monto_prestamo'] = $data['monto_prestamo'] ?? 0;
+    $data['monto_total'] = $data['monto_total'] ?? 0;
      // Redondear valores numéricos a 2 decimales
     $data['saldo_seguro'] = round($data['monto_seguro'], 2);
     $data['saldo_interes'] = round($data['monto_interes'], 2);
     $data['saldo_principal'] = round($data['monto_principal'], 2);
     $data['saldo_otros'] = round($data['monto_otros'], 2);
-
+    
      // Obtener el saldo_prestamo de la tabla de 'prestamos' y redondearlo
     $prestamo = Prestamo::find($data['id']);
     $data['saldo_prestamo'] = $prestamo ? round($prestamo->saldo_prestamo, 2) : 0;

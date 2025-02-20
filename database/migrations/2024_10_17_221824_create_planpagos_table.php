@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('prestamo_id')->constrained('prestamos')->cascadeOnDelete();
             $table->unsignedInteger('numero_cuota');
-            $table->dateTime('fecha_pago');
+            $table->date('fecha_pago');
             $table->decimal('monto_principal');
             $table->decimal('monto_interes');
             $table->decimal('monto_seguro');
