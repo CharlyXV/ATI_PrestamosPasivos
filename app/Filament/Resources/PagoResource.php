@@ -102,7 +102,7 @@ class PagoResource extends Resource
 
                 Tables\Columns\TextColumn::make('monto')
                     ->label('Monto')
-                    ->money('USD, CRC')
+                    ->money('CRC' )
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('fecha_pago')

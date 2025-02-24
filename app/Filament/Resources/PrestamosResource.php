@@ -338,7 +338,8 @@ public function mutateFormDataBeforeSave(array $data): array
             ->searchable()   
             ->sortable() ,           
             Tables\Columns\TextColumn::make('monto_prestamo')
-            ->searchable()   
+            ->searchable() 
+            ->money('CRC')  
             ->sortable(),            
             Tables\Columns\TextColumn::make('banco.nombre_banco')
             ->searchable()   
