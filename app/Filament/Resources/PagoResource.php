@@ -11,88 +11,121 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 class PagoResource extends Resource
 {
     protected static ?string $model = Pago::class;
     protected static ?string $navigationIcon = 'heroicon-o-currency-dollar';
     protected static ?string $navigationGroup = 'Gestión Financiera';
+    protected static ?int $navigationSort = 2;
 
-    public static function form(Form $form): Form
-    {
-        return $form
-            ->schema([
-                // Campo para seleccionar el préstamo
-                Forms\Components\Select::make('prestamo_id')
-                    ->relationship('prestamos', 'numero_prestamo')
-                    ->label('Préstamo')
-                    ->required()
-                    ->live(),
     
-                // Campo para seleccionar la cuota (reactivo al préstamo seleccionado)
-                Forms\Components\Select::make('planpago_id')
-                    ->relationship('planpagos', 'numero_cuota')
-                    ->label('Cuota')
-                    ->required()
-                    ->options(function (Forms\Get $get) {
-                        $prestamoId = $get('prestamo_id');
-                        if (!$prestamoId) {
-                            return [];
-                        }
-                        return Planpago::where('prestamo_id', $prestamoId)
-                            ->pluck('numero_cuota', 'id');
-                    })
-                    ->live()
-                    ->afterStateUpdated(function (Forms\Set $set, $state) {
-                        $planpago = Planpago::find($state);
-                        if ($planpago) {
-                            $set('monto', $planpago->monto_principal + $planpago->monto_interes);
-                            $fechaPago = $planpago->fecha_pago;
-                            if ($fechaPago instanceof \Carbon\Carbon) {
-                                $fechaPago = $fechaPago->format('Y-m-d'); // Solo fecha, sin hora
-                            }
-                            $set('fecha_pago', $fechaPago); // Actualiza el campo en el formulario
-                        } else {
+        public static function form(Form $form): Form
+        {
+            return $form
+                ->schema([
+                    Forms\Components\Select::make('prestamo_id')
+                        ->relationship('prestamo', 'numero_prestamo')
+                        ->label('Préstamo')
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Forms\Set $set, $state) {
+                            $set('planpago_id', null);
                             $set('monto', 0);
-                            $set('fecha_pago', null);
-                        }
-                    }),
-    
+                            $set('moneda', Prestamo::find($state)?->moneda ?? 'CRC');
+                        }),
+            
+                    Forms\Components\Select::make('planpago_id')
+                        ->relationship('planpago', 'numero_cuota')
+                        ->label('Cuota')
+                        ->required()
+                        ->options(function (Forms\Get $get) {
+                            $prestamoId = $get('prestamo_id');
+                            if (!$prestamoId) {
+                                return [];
+                            }
+                            
+                            return Planpago::with('prestamo')
+                                ->where('prestamo_id', $prestamoId)
+                                ->orderBy('numero_cuota')
+                                ->pluck('numero_cuota', 'id');
+                        })
+                        ->live()
+                        ->afterStateUpdated(function (Forms\Set $set, $state) {
+                            if (!$state) {
+                                $set('monto', 0);
+                                $set('fecha_pago', null);
+                                return;
+                            }
+                        
+                            $planpago = Planpago::with('prestamo')->find($state);
+                            
+                            if ($planpago && $planpago->prestamo) {
+                                $montoTotal = $planpago->monto_principal + $planpago->monto_interes;
+                                $set('monto', number_format($montoTotal, 2, '.', ''));
+                                $set('moneda', $planpago->prestamo->moneda);
+                                
+                                try {
+                                    $fechaPago = $planpago->fecha_pago 
+                                        ? \Carbon\Carbon::parse($planpago->fecha_pago)->format('Y-m-d')
+                                        : null;
+                                    $set('fecha_pago', $fechaPago);
+                                } catch (\Exception $e) {
+                                    $set('fecha_pago', null);
+                                }
+                            }
+                        }),
+                        
+                    // Campo Monto modificado
                     Forms\Components\TextInput::make('monto')
-                    ->label('Monto del Pago')
-                    ->numeric()
-                    ->required()
-                    ->default(0)
-                    ->dehydrateStateUsing(fn ($state) => $state), // Forzar el envío del valor
-    
-                // Campo para la fecha de pago (autocompletado)
-                Forms\Components\DatePicker::make('fecha_pago')
-                    ->label('Fecha de Pago')
-                    ->required()
-                    ->date()
-                    ->dehydrated(),
-    
-                // Campo para la referencia del depósito
-                Forms\Components\TextInput::make('referencia')
-                    ->label('Referencia del Depósito')
-                    ->nullable(),
-    
-                // Campo para el estado del pago
-                Forms\Components\Select::make('estado')
-                    ->options([
-                        'pendiente' => 'Pendiente',
-                        'completado' => 'Completado',
-                    ])
-                    ->default('pendiente')
-                    ->required(),
-            ]);
+                        ->label('Monto del Pago')
+                        ->numeric()
+                        ->required()
+                        ->readOnly() // Cambiado de disabled() a readOnly()
+                        ->default(0),
+            
+                    // Campo Moneda modificado
+                    Forms\Components\TextInput::make('moneda')
+                        ->label('Moneda')
+                        ->readOnly() // Cambiado de disabled() a readOnly()
+                        ->formatStateUsing(fn ($state) => match($state) {
+                            'USD' => 'USD ($)',
+                            'CRC' => 'CRC (₡)',
+                            'EUR' => 'EUR (€)',
+                            default => $state
+                        })
+                        ->dehydrated(),
+            
+                    // Campo Fecha de Pago modificado
+                    Forms\Components\DatePicker::make('fecha_pago')
+                        ->label('Fecha de Pago')
+                        ->required()
+                        ->readOnly() // Cambiado de disabled() a readOnly()
+                        ->native(false)
+                        ->format('Y-m-d')
+                        ->displayFormat('d/m/Y'),
+            
+                    Forms\Components\TextInput::make('referencia')
+                        ->label('Referencia del Depósito')
+                        ->nullable(),
+            
+                    Forms\Components\Select::make('estado')
+                        ->options([
+                            'pendiente' => 'Pendiente',
+                            'completado' => 'Completado',
+                        ])
+                        ->default('pendiente')
+                        ->required(),
+                ]);
+        
     }
 
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('prestamos.numero_prestamo')
+                Tables\Columns\TextColumn::make('prestamo.numero_prestamo')
                     ->label('Préstamo')
                     ->sortable(),
 
@@ -100,11 +133,26 @@ class PagoResource extends Resource
                     ->label('Cuota')
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('monto')
+                    Tables\Columns\TextColumn::make('monto')
                     ->label('Monto')
-                    ->money('CRC' )
-                    ->sortable(),
-
+                    ->formatStateUsing(function ($state, Model $record) {
+                        // Carga la relación si no está cargada
+                        $record->loadMissing(['planpago.prestamo']);
+                        
+                        // Obtiene la moneda de forma segura
+                        $moneda = optional($record->planpago)->prestamo->moneda ?? 'CRC';
+                        
+                        // Formatea el monto
+                        $formatted = number_format((float)$state, 2, '.', ',');
+                        
+                        // Devuelve con símbolo
+                        return match($moneda) {
+                            'USD' => '$' . $formatted,
+                            'CRC' => '₡' . $formatted,
+                            'EUR' => '€' . $formatted,
+                            default => $moneda . ' ' . $formatted
+                        };
+                    }),
                 Tables\Columns\TextColumn::make('fecha_pago')
                     ->label('Fecha de Pago')
                     ->date()

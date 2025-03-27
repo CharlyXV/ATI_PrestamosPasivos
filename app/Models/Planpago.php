@@ -12,6 +12,11 @@ class Planpago extends Model
 
     use HasFactory;
     
+  // app/Models/Planpago.php
+protected $casts = [
+    'fecha_pago' => 'date:Y-m-d',
+    // ... otros casts
+];
 protected $fillable = [
         'prestamo_id',
         'numero_cuota',
@@ -28,19 +33,19 @@ protected $fillable = [
         'saldo_otros',
         'observaciones',
     ];
-    public function prestamos(): BeLongsTo
+    public function prestamo(): BelongsTo
     {
-        return $this->belongsTo(Prestamo::class, 'prestamo_id');
-        
+        return $this->belongsTo(Prestamo::class);
     }
 
-
-    
-
-    public function pagos(): HasMany
+    /**
+     * Relación con Pagos
+     */
+    public function pagos()
     {
         return $this->hasMany(Pago::class);
     }
+
 
 
 }

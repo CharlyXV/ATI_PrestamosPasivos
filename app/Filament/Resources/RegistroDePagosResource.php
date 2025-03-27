@@ -22,7 +22,7 @@ class RegistroDePagosResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-currency-dollar'; // Ícono para el menú
     protected static ?string $pluralLabel = 'Registro de Pagos';
     protected static ?string $slug = 'registro-de-pagos'; // Ruta en el menú
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 3;
     protected static ?string $navigationGroup = 'Gestión Financiera'; // Agrupar en el menú
 
     public static function form(Form $form): Form
