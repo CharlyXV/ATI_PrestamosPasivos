@@ -43,12 +43,27 @@ class PrestamosResource extends Resource
                             ->required()
                             ->maxLength(255),
                             
-                        Select::make('banco_id')
-                            ->relationship('banco', 'nombre_banco')
+                            Forms\Components\Select::make('banco_id')
+                            ->relationship(name: 'banco', titleAttribute: 'nombre_banco')
                             ->label('Origen Fondos')
                             ->searchable()
                             ->preload()
-                            ->required(),
+                            ->required()
+                            ->live()
+                            ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                if ($state) {
+                                    $banco = \App\Models\Banco::find($state);
+                                    // Usamos cuenta_desembolsoB que es el nuevo nombre
+                                    $set('cuenta_desembolso', $banco->cuenta_desembolsoB);
+                                }
+                            }),
+                        
+                        Forms\Components\TextInput::make('cuenta_desembolso')
+                            ->label('Cuenta de Desembolso')
+                            ->disabled()
+                            ->dehydrated()
+                            ->required()
+                            ->maxLength(255),
                             
                         Select::make('linea_id')
                             ->relationship('linea', 'nombre_linea')
@@ -161,9 +176,7 @@ class PrestamosResource extends Resource
                             ->maxValue(99999999999.99)
                             ->step(0.01),
                             
-                        Forms\Components\TextInput::make('cuenta_desembolso')
-                            ->label('Cuenta de Desembolso')
-                            ->maxLength(255),
+                            
                             
                         Forms\Components\Textarea::make('observacion')
                             ->label('Observaciones')

@@ -30,7 +30,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin') // Ruta base del panel (http://localhost:160/admin)
             ->login(Login::class) // Usa la clase personalizada de Login
             ->colors([
-                'primary' => Color::Emerald,
+                'primary' => Color::Blue,
             ])
             ->favicon('images/atiicon.ico')
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')

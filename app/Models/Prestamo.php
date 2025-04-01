@@ -23,16 +23,16 @@ class Prestamo extends Model
         'monto_prestamo', 
         'saldo_prestamo', 
         'plazo_meses', 
-        'tipotasa_id', // Corregido para coincidir con el formulario
+        'tipotasa_id',
         'tasa_interes', 
         'tasa_spreed', 
-        'cuenta_desembolso', 
+        'cuenta_desembolso', // Este campo se mantiene
         'estado', 
         'periodicidad_pago', 
         'observacion'
     ];
 
-    // Relaciones corregidas (camelCase y tipo correcto BelongsTo)
+    // Relaciones correctas
     public function banco(): BelongsTo
     {
         return $this->belongsTo(Banco::class);

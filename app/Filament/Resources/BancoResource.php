@@ -31,6 +31,11 @@ class BancoResource extends Resource
                 ->label('Nombre del Banco')
                 ->required()
                 ->maxLength(255),
+
+                Forms\Components\TextInput::make('cuenta_desembolsoB') // Cambiar 'cuenta' por 'cuenta_desembolso'
+                ->label('Cuenta de Desembolso')
+                ->required() // Añadir required si es necesario
+                ->maxLength(255),
         ]);
 }
 
@@ -40,6 +45,10 @@ public static function table(Table $table): Table
         ->columns([
             TextColumn::make('nombre_banco')
                 ->label('Nombre del Banco')
+                ->sortable()
+                ->searchable(),
+                TextColumn::make('cuenta_desembolsoB')
+                ->label('Numero de Cuenta')
                 ->sortable()
                 ->searchable(),
             TextColumn::make('created_at')

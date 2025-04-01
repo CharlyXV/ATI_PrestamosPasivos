@@ -129,9 +129,19 @@ class PagoResource extends Resource
                     ->label('Préstamo')
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('planpagos.numero_cuota')
-                    ->label('Cuota')
-                    ->sortable(),
+// Por esta versión corregida y mejorada:
+Tables\Columns\TextColumn::make('planpago.numero_cuota')
+    ->label('Cuota N°')
+    ->formatStateUsing(function ($state, Pago $record) {
+        // Carga la relación si no está cargada
+        if (!$record->relationLoaded('planpago')) {
+            $record->load('planpago');
+        }
+        
+        return $record->planpago->numero_cuota ?? 'N/A';
+    })
+    ->sortable()
+    ->searchable(),
 
                     Tables\Columns\TextColumn::make('monto')
                     ->label('Monto')
