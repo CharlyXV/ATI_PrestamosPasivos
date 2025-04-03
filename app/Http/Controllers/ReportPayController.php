@@ -6,81 +6,111 @@ use App\Models\Prestamo;
 use App\Models\Planpago;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 
 class ReportPayController extends Controller
 {
     public function store(Request $request)
     {
-        // Crear el préstamo una sola vez y sin duplicados
-        $prestamo = Prestamo::create($request->all());
+        $validatedData = $this->validatePrestamoData($request);
+        
+        $prestamo = DB::transaction(function() use ($validatedData) {
+            $prestamo = Prestamo::create($validatedData);
+            $this->createPaymentPlan($prestamo);
+            return $prestamo;
+        });
 
-        // Crear el plan de pagos
-        $this->createPaymentPlan($prestamo);
+        return redirect()->route('prestamos.index')
+               ->with('success', 'Préstamo y plan de pagos creados exitosamente.');
+    }
 
-        return redirect()->route('prestamos.index')->with('success', 'Préstamo y plan de pagos creados exitosamente.');
+    protected function validatePrestamoData(Request $request)
+    {
+        return $request->validate([
+            'empresa_id' => 'required|integer',
+            'numero_prestamo' => 'required|string|unique:prestamos',
+            'monto_prestamo' => 'required|numeric|min:0.01',
+            'tasa_interes' => 'required|numeric|min:0',
+            'plazo_meses' => 'required|integer|min:1',
+            'banco_id' => 'required|integer',
+            'linea_id' => 'required|integer',
+            'formalizacion' => 'required|date',
+            // otros campos necesarios
+        ]);
     }
 
     public function createPaymentPlan(Prestamo $prestamo)
     {
-        // Eliminar todos los pagos existentes asociados a este préstamo y registrar los borrados
-        $planPagos = Planpago::where('prestamo_id', $prestamo->id)->get();
-        foreach ($planPagos as $planPago) {
-            Log::info('Eliminando plan de pago', ['id' => $planPago->id, 'prestamo_id' => $prestamo->id]);
-            $planPago->delete();
-        }
+        try {
+            Planpago::where('prestamo_id', $prestamo->id)->delete();
 
-        $loanAmount = $prestamo->monto_prestamo;
-        $interestRate = $prestamo->tasa_interes / 100;
-        $term = $prestamo->plazo_meses;
-        $monthlyRate = $interestRate / 12;
+            $loanAmount = (float)$prestamo->monto_prestamo;
+            $interestRate = (float)$prestamo->tasa_interes / 100;
+            $term = (int)$prestamo->plazo_meses;
+            $monthlyRate = $interestRate / 12;
 
-        $numberOfPayments = $term;
+            $monthlyPayment = $loanAmount * $monthlyRate / (1 - pow(1 + $monthlyRate, -$term));
+            $remainingBalance = $loanAmount;
 
-        $monthlyPayment = $loanAmount * $monthlyRate / (1 - pow(1 + $monthlyRate, -$numberOfPayments));
-        $remainingBalance = $loanAmount;
+            for ($i = 1; $i <= $term; $i++) {
+                $interestPayment = $remainingBalance * $monthlyRate;
+                $principalPayment = $monthlyPayment - $interestPayment;
+                $remainingBalance -= $principalPayment;
 
-        for ($i = 1; $i <= $numberOfPayments; $i++) {
-            $monthlyInterest = $remainingBalance * $monthlyRate;
-            $principalPayment = $monthlyPayment - $monthlyInterest;
-            $remainingBalance -= $principalPayment;
+                Planpago::create([
+                    'prestamo_id' => $prestamo->id,
+                    'numero_cuota' => $i,
+                    'fecha_pago' => $this->calculateDueDate($prestamo->formalizacion, $i),
+                    'monto_principal' => $this->formatDecimal($principalPayment),
+                    'monto_interes' => $this->formatDecimal($interestPayment),
+                    'monto_seguro' => 0,
+                    'monto_otros' => 0,
+                    'saldo_prestamo' => $this->formatDecimal(max($remainingBalance, 0)),
+                    'tasa_interes' => $prestamo->tasa_interes,
+                    'saldo_principal' => $this->formatDecimal($principalPayment),
+                    'saldo_interes' => $this->formatDecimal($interestPayment),
+                    'saldo_seguro' => 0,
+                    'saldo_otros' => 0,
+                    'observaciones' => 'Cuota '.$i.' de '.$term,
+                    'plp_estados' => 'pendiente'
+                ]);
+            }
 
-            Planpago::create([
-                'prestamo_id' => $prestamo->id,
-                'numero_cuota' => $i,
-                'fecha_pago' => now()->addMonths($i - 1),
-                'monto_principal' => $principalPayment,
-                'monto_interes' => $monthlyInterest,
-                'monto_seguro' => 0,
-                'monto_otros' => 0,
-                'saldo_prestamo' => $remainingBalance,
-                'tasa_interes' => $prestamo->tasa_interes,
-                'saldo_principal' => $principalPayment,
-                'saldo_interes' => $monthlyInterest,
-                'saldo_seguro' => 0,
-                'saldo_otros' => 0,
-                'observaciones' => '',
-            ]);
+            Log::info("Plan de pagos generado para préstamo {$prestamo->id}");
+
+        } catch (\Exception $e) {
+            Log::error("Error generando plan de pagos: ".$e->getMessage());
+            throw $e;
         }
     }
 
-    public function generateReport(Prestamo $prestamo) {
-        // Cargar la relación explícitamente
-        $prestamo->load('planpagos'); 
+    protected function calculateDueDate($startDate, $monthOffset)
+    {
+        return Carbon::parse($startDate)
+               ->addMonths($monthOffset)
+               ->format('Y-m-d');
+    }
+
+    private function formatDecimal($value): float
+    {
+        return round((float)$value, 2);
+    }
+
+    public function generateReport(Prestamo $prestamo)
+    {
+        $prestamo->load('planpagos');
     
-        // Verificar si hay registros
         if ($prestamo->planpagos->isEmpty()) {
-            abort(404, 'No hay pagos asociados a este préstamo.');
+            abort(404, 'No se encontró plan de pagos para este préstamo.');
         }
     
-        // Procesar los datos
-        $planPagos = $prestamo->planpagos->map(function($planPago) {
-            $planPago->fecha_pago = \Carbon\Carbon::parse($planPago->fecha_pago);
-            return $planPago;
-        });
-    
-        // Generar el PDF
-        $pdf = Pdf::loadView('report.pay_report', compact('prestamo', 'planPagos'));
-        return $pdf->download('pay_report.pdf');
+        $pdf = Pdf::loadView('report.pay_report', [
+            'prestamo' => $prestamo,
+            'planPagos' => $prestamo->planpagos->sortBy('numero_cuota')
+        ]);
+        
+        return $pdf->download('plan_de_pagos_'.$prestamo->numero_prestamo.'.pdf');
     }
 }

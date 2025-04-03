@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-
+use App\Http\Controllers\ReportPayController;
 class Prestamo extends Model
 {
     use HasFactory;
@@ -32,6 +32,16 @@ class Prestamo extends Model
         'observacion'
     ];
 
+    protected static function boot()
+{
+    parent::boot();
+
+    static::created(function ($prestamo) {
+        // Opcional: Doble seguro para generación automática
+        app(ReportPayController::class)->createPaymentPlan($prestamo);
+    });
+}
+
     // Relaciones correctas
     public function banco(): BelongsTo
     {
@@ -54,7 +64,7 @@ class Prestamo extends Model
     }
     
     public function planpagos()
-    {
-        return $this->hasMany(Planpago::class);
-    }
+{
+    return $this->hasMany(Planpago::class);
+}
 }

@@ -204,7 +204,8 @@ class PrestamosResource extends Resource
                                 Forms\Components\TextInput::make('monto_total')
                                     ->label('Total')
                                     ->numeric()
-                                    ->required()
+                                    ->disabled()
+                                    
                                     ->step(0.01),
                                     
                                 Forms\Components\TextInput::make('monto_principal')
@@ -346,25 +347,29 @@ class PrestamosResource extends Resource
         ];
     }
 
-    public function mutateFormDataBeforeSave(array $data): array
+    public static function mutateFormDataBeforeSave(array $data): array
     {
-        // Establecer valores por defecto
-        $defaults = [
-            'observacion' => $data['observacion'] ?? 'Sin observaciones',
-            'saldo_prestamo' => $data['saldo_prestamo'] ?? $data['monto_prestamo'],
-        ];
-
-        // Redondear valores numéricos
-        $numericFields = [
-            'monto_prestamo', 'saldo_prestamo', 'tasa_interes', 'tasa_spreed'
-        ];
-
-        foreach ($numericFields as $field) {
-            if (isset($data[$field])) {
-                $data[$field] = round((float)$data[$field], 2);
+        // Asegurar valores decimales correctos
+        $formatDecimal = function ($value) {
+            return is_numeric($value) ? round((float)$value, 2) : 0;
+        };
+    
+        if (isset($data['planpagos'])) {
+            foreach ($data['planpagos'] as &$cuota) {
+                // Solo procesar nuevas cuotas (las que no tienen ID)
+                if (empty($cuota['id'])) {
+                    $cuota['saldo_prestamo'] = $formatDecimal($data['monto_prestamo']);
+                    $cuota['saldo_principal'] = $formatDecimal($cuota['monto_principal'] ?? 0);
+                    $cuota['saldo_interes'] = $formatDecimal($cuota['monto_interes'] ?? 0);
+                    $cuota['saldo_seguro'] = $formatDecimal($cuota['monto_seguro'] ?? 0);
+                    $cuota['saldo_otros'] = $formatDecimal($cuota['monto_otros'] ?? 0);
+                    $cuota['tasa_interes'] = $formatDecimal($data['tasa_interes']);
+                    $cuota['observaciones'] = $cuota['observaciones'] ?? 'Cuota programada';
+                    $cuota['plp_estados'] = 'pendiente';
+                }
             }
         }
-
-        return array_merge($defaults, $data);
+        
+        return $data;
     }
 }
