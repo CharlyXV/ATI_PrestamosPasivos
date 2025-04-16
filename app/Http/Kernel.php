@@ -16,8 +16,11 @@ class Kernel extends HttpKernel
     protected $middleware = [
         // Otros middlewares globales
         \App\Http\Middleware\LanguageMiddleware::class,
+        \App\Http\Middleware\SetLanguage::class,
     ];
+    
 
+   
     /**
      * The application's route middleware groups.
      *

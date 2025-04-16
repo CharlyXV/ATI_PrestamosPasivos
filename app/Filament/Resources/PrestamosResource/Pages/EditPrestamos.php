@@ -12,16 +12,6 @@ class EditPrestamos extends EditRecord
 {
     protected static string $resource = PrestamosResource::class;
 
-    protected function getHeaderActions(): array
-    {
-        return [
-            Actions\Action::make('reporte')
-                ->label('Reporte Plan de Pagos')
-                ->url(fn() => route('pay.report', ['prestamo' => $this->record->id]))
-                ->openUrlInNewTab(),
-        ];
-    }
-
     protected function mutateFormDataBeforeSave(array $data): array
     {
         if (isset($data['planpagos'])) {
@@ -33,17 +23,7 @@ class EditPrestamos extends EditRecord
         return $data;
     }
     
-    protected function afterSave(): void
-    {
-        $prestamo = $this->record;
-        $reportPayController = App::make(ReportPayController::class);
-        
-        // Regenerar el plan de pagos
-        $reportPayController->createPaymentPlan($prestamo);
-        
-        // Corregir formato de los nuevos registros
-        $this->fixScientificNotationValues($prestamo);
-    }
+    
     
     // Métodos auxiliares mejorados
     private function formatPlanPagoValues(array $cuota, array $prestamoData): array

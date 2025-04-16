@@ -88,10 +88,34 @@ class PrestamosResource extends Resource
                             ->required()
                             ->live(),
                             
-                        Forms\Components\DatePicker::make('formalizacion')
+                            Forms\Components\DatePicker::make('formalizacion')
                             ->required()
                             ->native(false)
-                            ->displayFormat('d/m/Y'),
+                            ->displayFormat('d/m/Y')
+                            ->live()
+                            ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set) {
+                                // Actualizar fechas cuando se cambia la fecha de formalización
+                                $formalizacion = $get('formalizacion');
+                                $plazoMeses = $get('plazo_meses');
+                                $periodicidad = (int)$get('periodicidad_pago');
+                                
+                                if ($formalizacion) {
+                                    $fechaFormalizacion = \Carbon\Carbon::parse($formalizacion);
+                                    
+                                    // Calcular próximo pago según periodicidad
+                                    if ($periodicidad) {
+                                        $mesesAgregar = 12 / $periodicidad;
+                                        $proximoPago = $fechaFormalizacion->copy()->addMonths($mesesAgregar);
+                                        $set('proximo_pago', $proximoPago->format('Y-m-d'));
+                                    }
+                                    
+                                    // Calcular vencimiento según plazo
+                                    if ($plazoMeses) {
+                                        $vencimiento = $fechaFormalizacion->copy()->addMonths($plazoMeses);
+                                        $set('vencimiento', $vencimiento->format('Y-m-d'));
+                                    }
+                                }
+                            }),
                             
                         Forms\Components\TextInput::make('monto_prestamo')
                             ->label('Monto del Préstamo')
@@ -121,23 +145,59 @@ class PrestamosResource extends Resource
                             ->preload()
                             ->required(),
                             
-                        Select::make('periodicidad_pago')
-                            ->options([
-                                '12' => 'Mensual',
-                                '6' => 'Bimestral',
-                                '4' => 'Trimestral',
-                                '3' => 'Cuatrimestral',
-                                '2' => 'Semestral',
-                                '1' => 'Anual',
-                            ])
-                            ->label('Periodicidad de Pago')
-                            ->required(),
+                Select::make('periodicidad_pago')
+                    ->options([
+                        '12' => 'Mensual',
+                        '6' => 'Bimestral',
+                        '4' => 'Trimestral',
+                        '3' => 'Cuatrimestral',
+                        '2' => 'Semestral',
+                        '1' => 'Anual',
+])
+                        ->label('Periodicidad de Pago')
+                        ->required()
+                        ->live() // Hacerlo live para poder reaccionar cuando cambie
+    ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set) {
+    // Esto se ejecutará cuando se cambie la periodicidad
+    $formalizacion = $get('formalizacion');
+    $plazoMeses = $get('plazo_meses');
+    $periodicidad = (int)$get('periodicidad_pago');
+    
+    // Si tenemos fecha de formalización, actualizamos la fecha de próximo pago
+    if ($formalizacion) {
+        $fechaFormalizacion = \Carbon\Carbon::parse($formalizacion);
+        
+        // Calcular la fecha del próximo pago según la periodicidad
+        $mesesAgregar = 12 / $periodicidad; // Convertir la periodicidad a meses
+        $proximoPago = $fechaFormalizacion->copy()->addMonths($mesesAgregar);
+        
+        // Actualizar la fecha del próximo pago
+        $set('proximo_pago', $proximoPago->format('Y-m-d'));
+        
+        // Calcular también la fecha de vencimiento basada en el plazo
+        if ($plazoMeses) {
+            $vencimiento = $fechaFormalizacion->copy()->addMonths($plazoMeses);
+            $set('vencimiento', $vencimiento->format('Y-m-d'));
+        }
+    }
+}),
                             
                         Forms\Components\TextInput::make('plazo_meses')
                             ->numeric()
                             ->required()
                             ->minValue(1)
-                            ->maxValue(999),
+                            ->maxValue(999)
+                            ->live()
+    ->afterStateUpdated(function (Forms\Get $get, Forms\Set $set) {
+        $formalizacion = $get('formalizacion');
+        $plazoMeses = $get('plazo_meses');
+    
+    if ($formalizacion && $plazoMeses) {
+        $fechaFormalizacion = \Carbon\Carbon::parse($formalizacion);
+        $vencimiento = $fechaFormalizacion->copy()->addMonths($plazoMeses);
+        $set('vencimiento', $vencimiento->format('Y-m-d'));
+    }
+}),
                             
                         Forms\Components\TextInput::make('tasa_interes')
                             ->numeric()
@@ -185,61 +245,7 @@ class PrestamosResource extends Resource
                     ->columns(3)
                     ->collapsible(),
                     
-                Section::make('Plan de Pagos')
-                    ->description('Cuotas del préstamo')
-                    ->schema([
-                        Forms\Components\Repeater::make('planpagos')
-                            ->relationship()
-                            ->schema([
-                                Forms\Components\TextInput::make('numero_cuota')
-                                    ->label('N° Cuota')
-                                    ->numeric()
-                                    ->required(),
-                                    
-                                Forms\Components\DatePicker::make('fecha_pago')
-                                    ->label('Fecha Pago')
-                                    ->required()
-                                    ->native(false),
-                                    
-                                Forms\Components\TextInput::make('monto_total')
-                                    ->label('Total')
-                                    ->numeric()
-                                    ->disabled()
-                                    
-                                    ->step(0.01),
-                                    
-                                Forms\Components\TextInput::make('monto_principal')
-                                    ->label('Principal')
-                                    ->numeric()
-                                    ->step(0.01),
-                                    
-                                Forms\Components\TextInput::make('monto_interes')
-                                    ->label('Interés')
-                                    ->numeric()
-                                    ->step(0.01),
-                                    
-                                Forms\Components\TextInput::make('monto_seguro')
-                                    ->label('Seguro')
-                                    ->numeric()
-                                    ->step(0.01),
-                                    
-                                Forms\Components\TextInput::make('monto_otros')
-                                    ->label('Otros')
-                                    ->numeric()
-                                    ->step(0.01),
-                                    
-                                Select::make('plp_estados')
-                                    ->options([
-                                        'pendiente' => 'Pendiente',
-                                        'completado' => 'Completado',
-                                    ])
-                                    ->default('pendiente')
-                                    ->required(),
-                            ])
-                            ->columns(8)
-                            ->collapsible()
-                            ->itemLabel(fn (array $state): string => 'Cuota '.($state['numero_cuota'] ?? 'nueva'))
-                    ])
+            
             ]);
     }
 
@@ -259,6 +265,24 @@ class PrestamosResource extends Resource
                     
                 TextColumn::make('monto_prestamo')
                     ->label('Monto')
+                    ->formatStateUsing(function ($state, $record) {
+                        $simbolo = match($record->moneda) {
+                            'CRC' => '₡',
+                            'USD' => '$',
+                            'EUR' => '€',
+                            default => $record->moneda
+                        };
+                        return $simbolo . ' ' . number_format($state, 2);
+                        
+                    })
+                    ->sortable(),
+                    
+                TextColumn::make('banco.nombre_banco')
+                    ->searchable()
+                    ->sortable()
+                    ->toggleable(),
+
+                    TextColumn::make('saldo_prestamo')
                     ->formatStateUsing(function ($state, Prestamo $record) {
                         $formatted = number_format($state, 2, ',', '.');
                         return match($record->moneda) {
@@ -268,12 +292,8 @@ class PrestamosResource extends Resource
                             default => $formatted . ' ' . $record->moneda
                         };
                     })
-                    ->sortable(),
-                    
-                TextColumn::make('banco.nombre_banco')
-                    ->searchable()
                     ->sortable()
-                    ->toggleable(),
+                    ->label('S° Préstamo'),
                     
                 TextColumn::make('estado')
                     ->badge()
@@ -309,25 +329,12 @@ class PrestamosResource extends Resource
                     Tables\Actions\ViewAction::make(),
                     Tables\Actions\EditAction::make(),
                     Tables\Actions\DeleteAction::make(),
-                    Action::make('reporte_pdf')
-                        ->icon('heroicon-o-document-text')
-                        ->action(function (Prestamo $record) {
-                            $pdf = Pdf::loadView('pdf.prestamo', [
-                                'prestamo' => $record,
-                                'planPagos' => $record->planpagos()->orderBy('numero_cuota')->get()
-                            ]);
-                            
-                            return response()->streamDownload(
-                                fn () => print($pdf->output()),
-                                "reporte-prestamo-{$record->numero_prestamo}.pdf"
-                            );
-                        })
+                    
+                        
                 ]),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
-                ]),
             ]);
     }
 
@@ -347,29 +354,4 @@ class PrestamosResource extends Resource
         ];
     }
 
-    public static function mutateFormDataBeforeSave(array $data): array
-    {
-        // Asegurar valores decimales correctos
-        $formatDecimal = function ($value) {
-            return is_numeric($value) ? round((float)$value, 2) : 0;
-        };
-    
-        if (isset($data['planpagos'])) {
-            foreach ($data['planpagos'] as &$cuota) {
-                // Solo procesar nuevas cuotas (las que no tienen ID)
-                if (empty($cuota['id'])) {
-                    $cuota['saldo_prestamo'] = $formatDecimal($data['monto_prestamo']);
-                    $cuota['saldo_principal'] = $formatDecimal($cuota['monto_principal'] ?? 0);
-                    $cuota['saldo_interes'] = $formatDecimal($cuota['monto_interes'] ?? 0);
-                    $cuota['saldo_seguro'] = $formatDecimal($cuota['monto_seguro'] ?? 0);
-                    $cuota['saldo_otros'] = $formatDecimal($cuota['monto_otros'] ?? 0);
-                    $cuota['tasa_interes'] = $formatDecimal($data['tasa_interes']);
-                    $cuota['observaciones'] = $cuota['observaciones'] ?? 'Cuota programada';
-                    $cuota['plp_estados'] = 'pendiente';
-                }
-            }
-        }
-        
-        return $data;
-    }
 }

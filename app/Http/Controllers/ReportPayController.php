@@ -12,6 +12,48 @@ use Carbon\Carbon;
 
 class ReportPayController extends Controller
 {
+    // Métodos anteriores sin cambios...
+    
+    public function generateReport($prestamoId) {
+        try {
+            $prestamo = Prestamo::with(['planpagos', 'empresa'])->findOrFail($prestamoId);
+            
+            // Configurar opciones de PDF
+            $options = [
+                'isHtml5ParserEnabled' => true,
+                'isPhpEnabled' => true,
+                'isRemoteEnabled' => true,
+                'defaultFont' => 'sans-serif',
+                'fontDir' => storage_path('fonts/'),
+                'fontCache' => storage_path('fonts/'),
+                'chroot' => public_path()
+            ];
+            
+            // Asegurarse que todos los datos están en UTF-8 correctamente
+            $processedPrestamo = clone $prestamo;
+            
+            // Limpiar todos los strings en el objeto prestamo para asegurar codificación UTF-8 correcta
+            $this->sanitizeObject($processedPrestamo);
+            
+            $planPagos = $processedPrestamo->planpagos->map(function($item) {
+                return $this->sanitizeObject($item);
+            });
+            
+            // Generar PDF con opciones adicionales
+            $pdf = Pdf::loadView('report.pay_report', [
+                'prestamo' => $processedPrestamo,
+                'planPagos' => $planPagos
+            ])->setOptions($options);
+            
+            // Establecer papel y orientación
+            $pdf->setPaper('a4', 'portrait');
+            
+            return $pdf->download("plan_pagos_{$prestamo->id}.pdf");
+        } catch (\Exception $e) {
+            Log::error("Error al generar PDF: " . $e->getMessage() . "\n" . $e->getTraceAsString());
+            return back()->with('error', 'Error al generar el reporte: ' . $e->getMessage());
+        }
+    }
     public function store(Request $request)
     {
         $validatedData = $this->validatePrestamoData($request);
@@ -23,7 +65,7 @@ class ReportPayController extends Controller
         });
 
         return redirect()->route('prestamos.index')
-               ->with('success', 'Préstamo y plan de pagos creados exitosamente.');
+                ->with('success', 'Préstamo y plan de pagos creados exitosamente.');
     }
 
     protected function validatePrestamoData(Request $request)
@@ -63,16 +105,16 @@ class ReportPayController extends Controller
                     'prestamo_id' => $prestamo->id,
                     'numero_cuota' => $i,
                     'fecha_pago' => $this->calculateDueDate($prestamo->formalizacion, $i),
-                    'monto_principal' => $this->formatDecimal($principalPayment),
-                    'monto_interes' => $this->formatDecimal($interestPayment),
-                    'monto_seguro' => 0,
-                    'monto_otros' => 0,
-                    'saldo_prestamo' => $this->formatDecimal(max($remainingBalance, 0)),
+                    'monto_principal' => $this->roundAmount($principalPayment),
+                    'monto_interes' => $this->roundAmount($interestPayment),
+                    'monto_seguro' => 1,
+                    'monto_otros' => 1,
+                    'saldo_prestamo' => $this->roundAmount(max($remainingBalance, 1)),
                     'tasa_interes' => $prestamo->tasa_interes,
-                    'saldo_principal' => $this->formatDecimal($principalPayment),
-                    'saldo_interes' => $this->formatDecimal($interestPayment),
-                    'saldo_seguro' => 0,
-                    'saldo_otros' => 0,
+                    'saldo_principal' => $this->roundAmount($principalPayment),
+                    'saldo_interes' => $this->roundAmount($interestPayment),
+                    'saldo_seguro' => 1,
+                    'saldo_otros' => 1,
                     'observaciones' => 'Cuota '.$i.' de '.$term,
                     'plp_estados' => 'pendiente'
                 ]);
@@ -89,28 +131,49 @@ class ReportPayController extends Controller
     protected function calculateDueDate($startDate, $monthOffset)
     {
         return Carbon::parse($startDate)
-               ->addMonths($monthOffset)
-               ->format('Y-m-d');
+            ->addMonths($monthOffset)
+            ->format('Y-m-d');
     }
 
-    private function formatDecimal($value): float
+    private function roundAmount(float $amount, int $decimals = 2): float
     {
-        return round((float)$value, 2);
+        return round($amount, $decimals);
     }
-
-    public function generateReport(Prestamo $prestamo)
-    {
-        $prestamo->load('planpagos');
-    
-        if ($prestamo->planpagos->isEmpty()) {
-            abort(404, 'No se encontró plan de pagos para este préstamo.');
+    /**
+     * Sanitiza recursivamente objetos para asegurar codificación UTF-8 correcta
+     */
+    private function sanitizeObject($object) {
+        if (is_object($object)) {
+            $attributes = get_object_vars($object);
+            foreach ($attributes as $key => $value) {
+                if (is_string($value)) {
+                    // Intentar detectar la codificación original y convertir a UTF-8
+                    $encoding = mb_detect_encoding($value, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+                    if ($encoding && $encoding !== 'UTF-8') {
+                        $object->{$key} = mb_convert_encoding($value, 'UTF-8', $encoding);
+                    } elseif (!$encoding) {
+                        // Si no se puede detectar la codificación, forzar UTF-8 limpio
+                        $object->{$key} = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+                    }
+                } elseif (is_object($value) || is_array($value)) {
+                    $object->{$key} = $this->sanitizeObject($value);
+                }
+            }
+        } elseif (is_array($object)) {
+            foreach ($object as $key => $value) {
+                if (is_string($value)) {
+                    $encoding = mb_detect_encoding($value, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+                    if ($encoding && $encoding !== 'UTF-8') {
+                        $object[$key] = mb_convert_encoding($value, 'UTF-8', $encoding);
+                    } elseif (!$encoding) {
+                        $object[$key] = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+                    }
+                } elseif (is_object($value) || is_array($value)) {
+                    $object[$key] = $this->sanitizeObject($value);
+                }
+            }
         }
-    
-        $pdf = Pdf::loadView('report.pay_report', [
-            'prestamo' => $prestamo,
-            'planPagos' => $prestamo->planpagos->sortBy('numero_cuota')
-        ]);
         
-        return $pdf->download('plan_de_pagos_'.$prestamo->numero_prestamo.'.pdf');
+        return $object;
     }
 }

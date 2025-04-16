@@ -4,7 +4,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>@yield('title', 'Dashboard')</title>
+        <title>@yield('title', 'Prestamos Pasivos')</title>
         <title>Laravel</title>
         
 
@@ -32,7 +32,7 @@
     <div class="container">
         <h1>{{ __('messages.welcome') }}</h1>
         <ul>
-            <li><a href="{{ route('dashboard') }}">Dashboard</a></li>
+            <li><a href="{{ route('dashboard') }}"></a>Dashboard</li>
             <li><a href="{{ route('prestamos') }}">Préstamos</a></li>
             <!-- Agrega más enlaces según tus páginas -->
         </ul>

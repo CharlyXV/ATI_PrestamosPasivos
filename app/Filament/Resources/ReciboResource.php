@@ -1,6 +1,5 @@
 <?php
 
-// app/Filament/Resources/ReciboResource.php
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ReciboResource\Pages;
@@ -11,8 +10,6 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class ReciboResource extends Resource
 {
@@ -51,12 +48,22 @@ class ReciboResource extends Resource
                             ->required()
                             ->columnSpanFull(),
                             
-                        Forms\Components\Select::make('cuenta_id')
-                            ->relationship('cuenta', 'numero_cuenta')
-                            ->getOptionLabelFromRecordUsing(fn ($record) => "{$record->banco->nombre_banco} - {$record->numero_cuenta}")
+                        Forms\Components\Select::make('banco_id')
+                            ->relationship('banco', 'nombre_banco')
                             ->required()
                             ->searchable()
-                            ->preload(),
+                            ->preload()
+                            ->live()
+                            ->afterStateUpdated(function ($set, $state) {
+                                $banco = \App\Models\Banco::find($state);
+                                $set('cuenta_desembolso', $banco?->cuenta_desembolsoB ?? '');
+                            }),
+                            
+                        Forms\Components\TextInput::make('cuenta_desembolso')
+                            ->label('Cuenta de Desembolso')
+                            ->required()
+                            ->disabled()
+                            ->dehydrated(),
                             
                         Forms\Components\TextInput::make('monto_recibo')
                             ->numeric()
@@ -70,15 +77,6 @@ class ReciboResource extends Resource
                         Forms\Components\DatePicker::make('fecha_deposito')
                             ->default(now())
                             ->required(),
-                            
-                        Forms\Components\Select::make('estado')
-                            ->options([
-                                'I' => 'Incluido',
-                                'C' => 'Contabilizado',
-                                'A' => 'Anulado'
-                            ])
-                            ->default('I')
-                            ->required()
                     ])->columns(2),
                     
                 Forms\Components\Section::make('Detalle de Cuotas')
@@ -101,12 +99,17 @@ class ReciboResource extends Resource
                                     ->live()
                                     ->afterStateUpdated(function ($state, Forms\Set $set) {
                                         if ($planpago = \App\Models\Planpago::find($state)) {
-                                            $set('monto_principal', $planpago->monto_principal);
-                                            $set('monto_intereses', $planpago->monto_interes);
-                                            $set('monto_seguro', $planpago->monto_seguro);
-                                            $set('monto_otros', $planpago->monto_otros);
                                             $set('numero_cuota', $planpago->numero_cuota);
-                                            $set('monto_cuota', $planpago->monto_total);
+                                            $set('monto_principal', $planpago->saldo_principal);
+                                            $set('monto_intereses', $planpago->saldo_interes);
+                                            $set('monto_seguro', $planpago->saldo_seguro);
+                                            $set('monto_otros', $planpago->saldo_otros);
+                                            $set('monto_cuota', 
+                                                $planpago->saldo_principal + 
+                                                $planpago->saldo_interes + 
+                                                $planpago->saldo_seguro + 
+                                                $planpago->saldo_otros
+                                            );
                                         }
                                     }),
                                     
@@ -134,9 +137,9 @@ class ReciboResource extends Resource
                                     ->numeric()
                                     ->required()
                                     ->minValue(0)
-                                    ->disabled()
+                                    ->disabled(),
                             ])
-                            ->columns(6)
+                            ->columns(5)
                             ->minItems(1)
                             ->columnSpanFull()
                     ])
@@ -151,6 +154,10 @@ class ReciboResource extends Resource
                     ->searchable(),
                     
                 Tables\Columns\TextColumn::make('prestamo.numero_prestamo')
+                    ->searchable(),
+                    
+                Tables\Columns\TextColumn::make('banco.nombre_banco')
+                    ->label('Banco')
                     ->searchable(),
                     
                 Tables\Columns\TextColumn::make('tipo_recibo')
@@ -195,7 +202,7 @@ class ReciboResource extends Resource
             ])
             ->actions([
                 Tables\Actions\Action::make('procesar')
-                    ->label('Procesar')
+                    ->label('Procesar Pago')
                     ->icon('heroicon-o-check-circle')
                     ->action(function (Recibo $record) {
                         $record->procesarPago();
@@ -230,7 +237,35 @@ class ReciboResource extends Resource
         return [
             'index' => Pages\ListRecibos::route('/'),
             'create' => Pages\CreateRecibo::route('/create'),
-            'edit' => Pages\EditRecibo::route('/{record}/edit'),
+            
         ];
     }
+
+   // app/Filament/Resources/ReciboResource.php
+public static function mutateFormDataBeforeSave(array $data): array
+{
+    if (isset($data['detalles']) && is_array($data['detalles'])) {
+        $data['detalles'] = array_map(function ($detalle) {
+            return [
+                'planpago_id' => $detalle['planpago_id'],
+                'numero_cuota' => $detalle['numero_cuota'] ?? 1,
+                'monto_principal' => $detalle['monto_principal'] ?? 0,
+                'monto_intereses' => $detalle['monto_intereses'] ?? 0,
+                'monto_seguro' => $detalle['monto_seguro'] ?? 0,
+                'monto_otros' => $detalle['monto_otros'] ?? 0,
+                'monto_cuota' => (
+                    ($detalle['monto_principal'] ?? 0) +
+                    ($detalle['monto_intereses'] ?? 0) +
+                    ($detalle['monto_seguro'] ?? 0) +
+                    ($detalle['monto_otros'] ?? 0)
+                ),
+                'recibo_id' => $data['id'] ?? null
+            ];
+        }, $data['detalles']);
+    }
+
+    return $data;
+}
+
+
 }

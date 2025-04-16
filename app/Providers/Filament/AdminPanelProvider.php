@@ -26,13 +26,13 @@ class AdminPanelProvider extends PanelProvider
     {
         return $panel
             ->default()
-            ->id('admin') // Identificador del panel
-            ->path('admin') // Ruta base del panel (http://localhost:160/admin)
             ->login(Login::class) // Usa la clase personalizada de Login
             ->colors([
                 'primary' => Color::Blue,
             ])
-            ->favicon('images/atiicon.ico')
+            ->id('admin') // Identificador del panel
+            ->path('admin') // Ruta base del panel (http://localhost:160/admin)
+            ->favicon(asset('images/atiicon.ico'))
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
