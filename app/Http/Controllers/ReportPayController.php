@@ -13,11 +13,12 @@ use Carbon\Carbon;
 class ReportPayController extends Controller
 {
     // Métodos anteriores sin cambios...
-    
-    public function generateReport($prestamoId) {
+
+    public function generateReport($prestamoId)
+    {
         try {
             $prestamo = Prestamo::with(['planpagos', 'empresa'])->findOrFail($prestamoId);
-            
+
             // Configurar opciones de PDF
             $options = [
                 'isHtml5ParserEnabled' => true,
@@ -28,44 +29,51 @@ class ReportPayController extends Controller
                 'fontCache' => storage_path('fonts/'),
                 'chroot' => public_path()
             ];
-            
+
             // Asegurarse que todos los datos están en UTF-8 correctamente
             $processedPrestamo = clone $prestamo;
-            
+
             // Limpiar todos los strings en el objeto prestamo para asegurar codificación UTF-8 correcta
             $this->sanitizeObject($processedPrestamo);
-            
-            $planPagos = $processedPrestamo->planpagos->map(function($item) {
+
+            $planPagos = $processedPrestamo->planpagos->map(function ($item) {
                 return $this->sanitizeObject($item);
             });
-            
+
             // Generar PDF con opciones adicionales
             $pdf = Pdf::loadView('report.pay_report', [
                 'prestamo' => $processedPrestamo,
                 'planPagos' => $planPagos
             ])->setOptions($options);
-            
+
             // Establecer papel y orientación
             $pdf->setPaper('a4', 'portrait');
-            
+
             return $pdf->download("plan_pagos_{$prestamo->id}.pdf");
         } catch (\Exception $e) {
             Log::error("Error al generar PDF: " . $e->getMessage() . "\n" . $e->getTraceAsString());
             return back()->with('error', 'Error al generar el reporte: ' . $e->getMessage());
         }
     }
+
+
+
+
+
+
+
     public function store(Request $request)
     {
         $validatedData = $this->validatePrestamoData($request);
-        
-        $prestamo = DB::transaction(function() use ($validatedData) {
+
+        $prestamo = DB::transaction(function () use ($validatedData) {
             $prestamo = Prestamo::create($validatedData);
             $this->createPaymentPlan($prestamo);
             return $prestamo;
         });
 
         return redirect()->route('prestamos.index')
-                ->with('success', 'Préstamo y plan de pagos creados exitosamente.');
+            ->with('success', 'Préstamo y plan de pagos creados exitosamente.');
     }
 
     protected function validatePrestamoData(Request $request)
@@ -82,7 +90,7 @@ class ReportPayController extends Controller
             // otros campos necesarios
         ]);
     }
-
+    /*
     public function createPaymentPlan(Prestamo $prestamo)
     {
         try {
@@ -115,15 +123,14 @@ class ReportPayController extends Controller
                     'saldo_interes' => $this->roundAmount($interestPayment),
                     'saldo_seguro' => 1,
                     'saldo_otros' => 1,
-                    'observaciones' => 'Cuota '.$i.' de '.$term,
+                    'observaciones' => 'Cuota ' . $i . ' de ' . $term,
                     'plp_estados' => 'pendiente'
                 ]);
             }
 
             Log::info("Plan de pagos generado para préstamo {$prestamo->id}");
-
         } catch (\Exception $e) {
-            Log::error("Error generando plan de pagos: ".$e->getMessage());
+            Log::error("Error generando plan de pagos: " . $e->getMessage());
             throw $e;
         }
     }
@@ -131,7 +138,7 @@ class ReportPayController extends Controller
     protected function calculateDueDate($startDate, $monthOffset)
     {
         return Carbon::parse($startDate)
-            ->addMonths($monthOffset)
+            ->addMonths((int)$monthOffset) // Asegurar conversión a entero
             ->format('Y-m-d');
     }
 
@@ -139,10 +146,114 @@ class ReportPayController extends Controller
     {
         return round($amount, $decimals);
     }
-    /**
-     * Sanitiza recursivamente objetos para asegurar codificación UTF-8 correcta
-     */
-    private function sanitizeObject($object) {
+    */
+
+
+    public function createPaymentPlan(Prestamo $prestamo)
+    {
+        DB::beginTransaction();
+    
+        try {
+            // Validar datos del préstamo
+            if (!$prestamo->periodicidad_pago || !$prestamo->plazo_meses || !$prestamo->formalizacion) {
+                throw new \Exception("Datos incompletos para generar el plan de pagos");
+            }
+    
+            // Eliminar planes de pago existentes
+            Planpago::where('prestamo_id', $prestamo->id)->delete();
+    
+            $loanAmount = (float)$prestamo->monto_prestamo;
+            $interestRate = (float)$prestamo->tasa_interes / 100;
+            $numPagos = (int)$prestamo->plazo_meses; // Número de periodos (cuotas)
+            $periodicidad = (int)$prestamo->periodicidad_pago;
+            $mesesEntrePagos = 12 / $periodicidad; // Meses entre cada pago
+            
+            // Calcular tasa periódica y pago periódico
+            $periodicRate = $interestRate / $periodicidad;
+            $periodicPayment = $loanAmount * $periodicRate / (1 - pow(1 + $periodicRate, -$numPagos));
+            $remainingBalance = $loanAmount;
+    
+            // Generar cada cuota del plan de pagos
+            for ($i = 1; $i <= $numPagos; $i++) {
+                $interestPayment = $remainingBalance * $periodicRate;
+                $principalPayment = $periodicPayment - $interestPayment;
+                $remainingBalance -= $principalPayment;
+    
+                // Crear registro de pago
+                Planpago::create([
+                    'prestamo_id' => $prestamo->id,
+                    'numero_cuota' => $i,
+                    'fecha_pago' => $this->calculateDueDate($prestamo->formalizacion, $i * $mesesEntrePagos),
+                    'monto_principal' => $this->roundAmount($principalPayment),
+                    'monto_interes' => $this->roundAmount($interestPayment),
+                    'monto_seguro' => 0, // Puedes ajustar según necesidades
+                    'monto_otros' => 0,  // Puedes ajustar según necesidades
+                    'saldo_prestamo' => $this->roundAmount(max($remainingBalance, 0)),
+                    'tasa_interes' => $prestamo->tasa_interes,
+                    'saldo_principal' => $this->roundAmount($principalPayment),
+                    'saldo_interes' => $this->roundAmount($interestPayment),
+                    'saldo_seguro' => 0,
+                    'saldo_otros' => 0,
+                    'observaciones' => $this->generatePaymentDescription($i, $numPagos, $periodicidad),
+                    'plp_estados' => 'pendiente'
+                ]);
+            }
+    
+            DB::commit();
+            Log::info("Plan de pagos generado para préstamo {$prestamo->id} con {$numPagos} pagos {$this->getPeriodicidadNombre($periodicidad)}");
+    
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Error generando plan de pagos: ".$e->getMessage());
+            throw $e;
+        }
+    }
+    
+    // Métodos auxiliares (pueden ir en el mismo controlador o en un trait)
+    protected function calculateDueDate($startDate, $monthOffset)
+    {
+        return Carbon::parse($startDate)
+            ->addMonths((int)$monthOffset)
+            ->format('Y-m-d');
+    }
+    
+    protected function roundAmount(float $amount, int $decimals = 2): float
+    {
+        return round($amount, $decimals);
+    }
+    
+    protected function generatePaymentDescription($current, $total, $periodicidad): string
+    {
+        $periodName = match($periodicidad) {
+            1 => 'anual',
+            2 => 'semestral',
+            3 => 'cuatrimestral',
+            4 => 'trimestral',
+            6 => 'bimestral',
+            12 => 'mensual',
+            default => 'de pago'
+        };
+        
+        return "Cuota {$current} de {$total} (Pago {$periodName})";
+    }
+    
+    protected function getPeriodicidadNombre($periodicidad): string
+    {
+        return match((int)$periodicidad) {
+            1 => 'anuales',
+            2 => 'semestrales',
+            3 => 'cuatrimestrales',
+            4 => 'trimestrales',
+            6 => 'bimestrales',
+            12 => 'mensuales',
+            default => 'periodos'
+        };
+    }
+
+
+
+    private function sanitizeObject($object)
+    {
         if (is_object($object)) {
             $attributes = get_object_vars($object);
             foreach ($attributes as $key => $value) {
@@ -173,7 +284,7 @@ class ReportPayController extends Controller
                 }
             }
         }
-        
+
         return $object;
     }
 }

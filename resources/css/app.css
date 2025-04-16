@@ -1,3 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+tr[data-completed="true"] {
+    pointer-events: none;
+    opacity: 0.7;
+}

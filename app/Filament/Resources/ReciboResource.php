@@ -10,6 +10,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Notifications\Notification;
 
 class ReciboResource extends Resource
 {
@@ -30,7 +31,7 @@ class ReciboResource extends Resource
                             ->live()
                             ->searchable()
                             ->preload(),
-                            
+
                         Forms\Components\Select::make('tipo_recibo')
                             ->options([
                                 'CN' => 'Cuota Normal',
@@ -38,16 +39,16 @@ class ReciboResource extends Resource
                                 'LI' => 'Liquidación'
                             ])
                             ->required(),
-                            
+
                         Forms\Components\TextInput::make('numero_recibo')
                             ->default('REC-' . now()->format('YmdHis'))
                             ->required()
                             ->unique(ignoreRecord: true),
-                            
+
                         Forms\Components\Textarea::make('detalle')
                             ->required()
                             ->columnSpanFull(),
-                            
+
                         Forms\Components\Select::make('banco_id')
                             ->relationship('banco', 'nombre_banco')
                             ->required()
@@ -58,27 +59,27 @@ class ReciboResource extends Resource
                                 $banco = \App\Models\Banco::find($state);
                                 $set('cuenta_desembolso', $banco?->cuenta_desembolsoB ?? '');
                             }),
-                            
+
                         Forms\Components\TextInput::make('cuenta_desembolso')
                             ->label('Cuenta de Desembolso')
                             ->required()
                             ->disabled()
                             ->dehydrated(),
-                            
+
                         Forms\Components\TextInput::make('monto_recibo')
                             ->numeric()
                             ->required()
                             ->minValue(0.01),
-                            
+
                         Forms\Components\DatePicker::make('fecha_pago')
                             ->default(now())
                             ->required(),
-                            
+
                         Forms\Components\DatePicker::make('fecha_deposito')
                             ->default(now())
                             ->required(),
                     ])->columns(2),
-                    
+
                 Forms\Components\Section::make('Detalle de Cuotas')
                     ->schema([
                         Forms\Components\Repeater::make('detalles')
@@ -104,35 +105,36 @@ class ReciboResource extends Resource
                                             $set('monto_intereses', $planpago->saldo_interes);
                                             $set('monto_seguro', $planpago->saldo_seguro);
                                             $set('monto_otros', $planpago->saldo_otros);
-                                            $set('monto_cuota', 
-                                                $planpago->saldo_principal + 
-                                                $planpago->saldo_interes + 
-                                                $planpago->saldo_seguro + 
-                                                $planpago->saldo_otros
+                                            $set(
+                                                'monto_cuota',
+                                                $planpago->saldo_principal +
+                                                    $planpago->saldo_interes +
+                                                    $planpago->saldo_seguro +
+                                                    $planpago->saldo_otros
                                             );
                                         }
                                     }),
-                                    
+
                                 Forms\Components\TextInput::make('monto_principal')
                                     ->numeric()
                                     ->required()
                                     ->minValue(0),
-                                    
+
                                 Forms\Components\TextInput::make('monto_intereses')
                                     ->numeric()
                                     ->required()
                                     ->minValue(0),
-                                    
+
                                 Forms\Components\TextInput::make('monto_seguro')
                                     ->numeric()
                                     ->required()
                                     ->minValue(0),
-                                    
+
                                 Forms\Components\TextInput::make('monto_otros')
                                     ->numeric()
                                     ->required()
                                     ->minValue(0),
-                                    
+
                                 Forms\Components\TextInput::make('monto_cuota')
                                     ->numeric()
                                     ->required()
@@ -151,34 +153,43 @@ class ReciboResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('numero_recibo')
-                    ->searchable(),
-                    
+                    ->searchable()
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('prestamo.numero_prestamo')
-                    ->searchable(),
-                    
+                    ->searchable()
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('banco.nombre_banco')
                     ->label('Banco')
-                    ->searchable(),
-                    
+                    ->searchable()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('tipo_recibo')
-                    ->formatStateUsing(fn ($state) => match($state) {
+                    ->formatStateUsing(fn($state) => match ($state) {
                         'CN' => 'Normal',
                         'CA' => 'Anticipado',
                         'LI' => 'Liquidación',
                         default => $state
                     }),
-                    
+
                 Tables\Columns\TextColumn::make('monto_recibo')
-                    ->money(fn ($record) => $record->prestamo->moneda ?? 'CRC')
+                    ->money(fn($record) => $record->prestamo->moneda ?? 'CRC')
                     ->sortable(),
-                    
+
                 Tables\Columns\TextColumn::make('fecha_pago')
                     ->date()
                     ->sortable(),
-                    
+
                 Tables\Columns\TextColumn::make('estado')
                     ->badge()
-                    ->color(fn ($state) => match($state) {
+                    ->formatStateUsing(fn($state) => match ($state) {
+                        'I' => 'Incluido',
+                        'C' => 'Completado',
+                        'A' => 'Anulado',
+                        default => $state
+                    })
+                    ->color(fn($state) => match ($state) {
                         'I' => 'info',
                         'C' => 'success',
                         'A' => 'danger',
@@ -186,45 +197,62 @@ class ReciboResource extends Resource
                     })
             ])
             ->filters([
+                // Filtros correctos (solo SelectFilter y Filter)
                 Tables\Filters\SelectFilter::make('tipo_recibo')
                     ->options([
                         'CN' => 'Normal',
                         'CA' => 'Anticipado',
                         'LI' => 'Liquidación'
                     ]),
-                    
+
                 Tables\Filters\SelectFilter::make('estado')
                     ->options([
                         'I' => 'Incluido',
-                        'C' => 'Contabilizado',
+                        'C' => 'Completado',
                         'A' => 'Anulado'
                     ])
+                    ->default('I') // Filtro por defecto
             ])
             ->actions([
-                Tables\Actions\Action::make('procesar')
-                    ->label('Procesar Pago')
+                Tables\Actions\Action::make('completar')
+                    ->label('Completar')
                     ->icon('heroicon-o-check-circle')
+                    ->color('success')
                     ->action(function (Recibo $record) {
-                        $record->procesarPago();
+                        $record->completar();
+                        Notification::make()
+                            ->title('Recibo completado')
+                            ->success()
+                            ->send();
                     })
-                    ->visible(fn ($record) => $record->estado == 'I')
-                    ->color('success'),
-                    
+                    ->visible(fn($record) => $record->estado == 'I')
+                    ->requiresConfirmation()
+                    ->modalHeading('Completar Recibo')
+                    ->modalDescription('¿Estás seguro de marcar este recibo como completado? Esta acción no se puede deshacer.')
+                    ->modalSubmitActionLabel('Sí, completar'),
+
                 Tables\Actions\Action::make('anular')
                     ->label('Anular')
                     ->icon('heroicon-o-x-circle')
+                    ->color('danger')
                     ->action(function (Recibo $record) {
-                        $record->anularRecibo();
+                        $record->anular();
+                        Notification::make()
+                            ->title('Recibo anulado')
+                            ->success()
+                            ->send();
                     })
-                    ->visible(fn ($record) => $record->estado != 'A')
-                    ->color('danger'),
-                    
+                    ->visible(fn($record) => $record->estado == 'I')
+                    ->requiresConfirmation(),
+
+                // Eliminé la acción duplicada de 'anular' que estaba más abajo
+
                 Tables\Actions\Action::make('imprimir')
                     ->label('Imprimir')
                     ->icon('heroicon-o-printer')
-                    ->url(fn ($record) => route('recibos.download', $record))
+                    ->url(fn($record) => route('recibos.download', $record))
                     ->openUrlInNewTab(),
-                    
+
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
@@ -237,35 +265,35 @@ class ReciboResource extends Resource
         return [
             'index' => Pages\ListRecibos::route('/'),
             'create' => Pages\CreateRecibo::route('/create'),
-            
+
         ];
     }
 
-   // app/Filament/Resources/ReciboResource.php
-public static function mutateFormDataBeforeSave(array $data): array
-{
-    if (isset($data['detalles']) && is_array($data['detalles'])) {
-        $data['detalles'] = array_map(function ($detalle) {
-            return [
-                'planpago_id' => $detalle['planpago_id'],
-                'numero_cuota' => $detalle['numero_cuota'] ?? 1,
-                'monto_principal' => $detalle['monto_principal'] ?? 0,
-                'monto_intereses' => $detalle['monto_intereses'] ?? 0,
-                'monto_seguro' => $detalle['monto_seguro'] ?? 0,
-                'monto_otros' => $detalle['monto_otros'] ?? 0,
-                'monto_cuota' => (
+    // app/Filament/Resources/ReciboResource.php
+    public static function mutateFormDataBeforeSave(array $data): array
+    {
+        if (isset($data['detalles']) && is_array($data['detalles'])) {
+            $data['detalles'] = array_map(function ($detalle) {
+                $montoCuota = (
                     ($detalle['monto_principal'] ?? 0) +
                     ($detalle['monto_intereses'] ?? 0) +
                     ($detalle['monto_seguro'] ?? 0) +
                     ($detalle['monto_otros'] ?? 0)
-                ),
-                'recibo_id' => $data['id'] ?? null
-            ];
-        }, $data['detalles']);
+                );
+
+                return [
+                    'planpago_id' => $detalle['planpago_id'],
+                    'numero_cuota' => $detalle['numero_cuota'] ?? 1,
+                    'monto_principal' => $detalle['monto_principal'] ?? 0,
+                    'monto_intereses' => $detalle['monto_intereses'] ?? 0,
+                    'monto_seguro' => $detalle['monto_seguro'] ?? 0,
+                    'monto_otros' => $detalle['monto_otros'] ?? 0,
+                    'monto_cuota' => $montoCuota,
+                    'recibo_id' => $data['id'] ?? null
+                ];
+            }, $data['detalles']);
+        }
+
+        return $data;
     }
-
-    return $data;
-}
-
-
 }

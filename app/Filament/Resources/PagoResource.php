@@ -65,68 +65,80 @@ class PagoResource extends Resource
     }
 
     public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                TextColumn::make('prestamo.numero_prestamo')
-                    ->label('N° Préstamo')
-                    ->searchable()
-                    ->sortable(),
-                    
-                TextColumn::make('numero_cuota')
-                    ->label('Cuota')
-                    ->sortable(),
-                    
-                TextColumn::make('fecha_pago')
-                    ->label('Fecha Pago')
-                    ->date('d/m/Y')
-                    ->sortable(),
-                    
-                    TextColumn::make('monto_principal')
-                    ->label('Principal')
-                    ->formatStateUsing(function ($state, $record) {
-                        $simbolo = match($record->prestamo->moneda) {
-                            'CRC' => '₡',
-                            'USD' => '$',
-                            'EUR' => '€',
-                            default => $record->prestamo->moneda
-                        };
-                        return $simbolo . ' ' . number_format($state, 2);
-                    }),
+{
+    return $table
+        ->columns([
+            TextColumn::make('prestamo.numero_prestamo')
+                ->label('N° Préstamo')
+                ->searchable()
+                ->sortable(),
                 
-                    
-                TextColumn::make('monto_interes')
-                    ->label('Interés')
-                    ->formatStateUsing(function ($state, $record) {
-                        $simbolo = match($record->prestamo->moneda) {
-                            'CRC' => '₡',
-                            'USD' => '$',
-                            'EUR' => '€',
-                            default => $record->prestamo->moneda
-                        };
-                        return $simbolo . ' ' . number_format($state, 2);
-                    }),
-                    
-                TextColumn::make('monto_total')
-                    ->label('Total Cuota')
-                    ->formatStateUsing(function ($state, $record) {
-                        $simbolo = match($record->prestamo->moneda) {
-                            'CRC' => '₡',
-                            'USD' => '$',
-                            'EUR' => '€',
-                            default => $record->prestamo->moneda
-                        };
-                        return $simbolo . ' ' . number_format($state, 2);
-                    }),
-                    
-                TextColumn::make('plp_estados')
-                    ->label('Estado')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'completado' => 'success',
-                        'pendiente' => 'warning',
-                    }),
-            ])
+            TextColumn::make('numero_cuota')
+                ->label('Cuota')
+                ->sortable(),
+                
+            TextColumn::make('fecha_pago')
+                ->label('Fecha Pago')
+                ->date('d/m/Y')
+                ->sortable(),
+                
+            TextColumn::make('monto_principal')
+                ->label('Principal')
+                ->formatStateUsing(function ($state, $record) {
+                    $simbolo = match($record->prestamo->moneda) {
+                        'CRC' => '₡',
+                        'USD' => '$',
+                        'EUR' => '€',
+                        default => $record->prestamo->moneda
+                    };
+                    return $simbolo . ' ' . number_format($state, 2);
+                }),
+            
+            TextColumn::make('monto_interes')
+                ->label('Interés')
+                ->formatStateUsing(function ($state, $record) {
+                    $simbolo = match($record->prestamo->moneda) {
+                        'CRC' => '₡',
+                        'USD' => '$',
+                        'EUR' => '€',
+                        default => $record->prestamo->moneda
+                    };
+                    return $simbolo . ' ' . number_format($state, 2);
+                }),
+                
+            TextColumn::make('monto_total')
+                ->label('Total Cuota')
+                ->formatStateUsing(function ($state, $record) {
+                    $simbolo = match($record->prestamo->moneda) {
+                        'CRC' => '₡',
+                        'USD' => '$',
+                        'EUR' => '€',
+                        default => $record->prestamo->moneda
+                    };
+                    return $simbolo . ' ' . number_format($state, 2);
+                }),
+                
+            TextColumn::make('plp_estados')
+                ->label('Estado')
+                ->badge()
+                ->extraAttributes(fn ($record) => [
+                    'data-completed' => $record->plp_estados === 'completado' ? 'true' : 'false'
+                ])
+                ->color(fn (string $state): string => match ($state) {
+                    'completado' => 'success',
+                    'pendiente' => 'warning',
+                })
+                ->formatStateUsing(fn(string $state): string => match ($state) {
+                    'completado' => 'Completado',
+                    'pendiente' => 'Pendiente',
+                })
+                
+        ])
+        ->actions([
+            Tables\Actions\EditAction::make()
+                ->visible(fn ($record) => $record->plp_estados !== 'completado'),
+            // ... otras acciones
+        ])
 
             ->filters([
                 SelectFilter::make('prestamo_id')

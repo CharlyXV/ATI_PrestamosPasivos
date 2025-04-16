@@ -40,6 +40,13 @@ class Prestamo extends Model
         // Opcional: Doble seguro para generación automática
         app(ReportPayController::class)->createPaymentPlan($prestamo);
     });
+
+    static::creating(function ($prestamo) {
+        if (empty($prestamo->saldo_prestamo)) {
+            $prestamo->saldo_prestamo = $prestamo->monto_prestamo;
+        }
+    });
+
 }
 
     // Relaciones correctas
