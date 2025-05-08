@@ -11,13 +11,12 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Notifications\Notification;
+use Closure;
 
 class ReciboResource extends Resource
 {
     protected static ?string $model = Recibo::class;
-    protected static ?string $navigationIcon = 'heroicon-o-document-text';
-    protected static ?string $navigationGroup = 'Gestión Financiera';
-    protected static ?int $navigationSort = 3;
+    protected static bool $shouldRegisterNavigation = false;
 
     public static function form(Form $form): Form
     {
@@ -30,7 +29,32 @@ class ReciboResource extends Resource
                             ->required()
                             ->live()
                             ->searchable()
-                            ->preload(),
+                            ->preload()
+                            ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                if ($state) {
+                                    $prestamo = \App\Models\Prestamo::find($state);
+                                    $set('moneda_prestamo', $prestamo->moneda ?? 'CRC');
+                                }
+                            }),
+
+                        Forms\Components\Select::make('tipo_pago')
+                            ->label('Tipo de Pago')
+                            ->options([
+                                'normal' => 'Pago Normal',
+                                'parcial' => 'Pago Parcial'
+                            ])
+                            ->required()
+                            ->live()
+                            ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                if ($state === 'normal') {
+                                    $set('monto_recibo', null);
+                                }
+                            }),
+
+                        Forms\Components\TextInput::make('numero_recibo')
+                            ->default('REC-' . now()->format('YmdHis'))
+                            ->required()
+                            ->unique(ignoreRecord: true),
 
                         Forms\Components\Select::make('tipo_recibo')
                             ->options([
@@ -39,11 +63,6 @@ class ReciboResource extends Resource
                                 'LI' => 'Liquidación'
                             ])
                             ->required(),
-
-                        Forms\Components\TextInput::make('numero_recibo')
-                            ->default('REC-' . now()->format('YmdHis'))
-                            ->required()
-                            ->unique(ignoreRecord: true),
 
                         Forms\Components\Textarea::make('detalle')
                             ->required()
@@ -67,9 +86,23 @@ class ReciboResource extends Resource
                             ->dehydrated(),
 
                         Forms\Components\TextInput::make('monto_recibo')
+                            ->label('Monto del Recibo')
                             ->numeric()
                             ->required()
-                            ->minValue(0.01),
+                            ->minValue(0.01)
+                            ->disabled(fn(Forms\Get $get) => $get('tipo_pago') === 'normal')
+                            ->dehydrated(),
+
+                            Forms\Components\TextInput::make('moneda_prestamo')
+                            ->label('Moneda del Préstamo')
+                            ->disabled()
+                            ->dehydrated(false) // Esto evita que se guarde en la base de datos
+                            ->formatStateUsing(fn($state) => match ($state) {
+                                'CRC' => 'Colones (₡)',
+                                'USD' => 'Dólares ($)',
+                                'EUR' => 'Euros (€)',
+                                default => $state
+                            }),
 
                         Forms\Components\DatePicker::make('fecha_pago')
                             ->default(now())
@@ -91,58 +124,98 @@ class ReciboResource extends Resource
                                         if (!$get('../../prestamo_id')) {
                                             return [];
                                         }
-                                        return \App\Models\Planpago::where('prestamo_id', $get('../../prestamo_id'))
+
+                                        $query = \App\Models\Planpago::where('prestamo_id', $get('../../prestamo_id'))
                                             ->where('plp_estados', 'pendiente')
-                                            ->orderBy('numero_cuota')
-                                            ->pluck('numero_cuota', 'id');
+                                            ->orderBy('numero_cuota');
+
+                                        // Excluir cuotas que ya tienen recibo normal (sin importar el tipo de pago actual)
+                                        $query->whereNotIn('id', function ($q) {
+                                            $q->select('planpago_id')
+                                                ->from('detalle_recibo')
+                                                ->join('recibos', 'detalle_recibo.recibo_id', '=', 'recibos.id')
+                                                ->where('recibos.tipo_pago', 'normal')
+                                                ->where('recibos.estado', '!=', 'A'); // Excluir anulados
+                                        });
+
+                                        return $query->pluck('numero_cuota', 'id');
                                     })
                                     ->required()
                                     ->live()
-                                    ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                    ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
                                         if ($planpago = \App\Models\Planpago::find($state)) {
                                             $set('numero_cuota', $planpago->numero_cuota);
                                             $set('monto_principal', $planpago->saldo_principal);
                                             $set('monto_intereses', $planpago->saldo_interes);
-                                            $set('monto_seguro', $planpago->saldo_seguro);
-                                            $set('monto_otros', $planpago->saldo_otros);
+
+                                            // Si es pago normal, establecer monto_recibo como el total
+                                            if ($get('../../tipo_pago') === 'normal') {
+                                                $set(
+                                                    '../../monto_recibo',
+                                                    $planpago->saldo_principal +
+                                                        $planpago->saldo_interes
+                                                );
+                                            }
+
                                             $set(
                                                 'monto_cuota',
                                                 $planpago->saldo_principal +
-                                                    $planpago->saldo_interes +
-                                                    $planpago->saldo_seguro +
-                                                    $planpago->saldo_otros
+                                                    $planpago->saldo_interes
                                             );
                                         }
-                                    }),
+                                    })
+                                    ->rules([
+                                        function (Forms\Get $get) {
+                                            return function (string $attribute, $value, Closure $fail) use ($get) {
+                                                if ($get('../../tipo_pago') === 'normal' && $value) {
+                                                    $existeReciboNormal = \App\Models\DetalleRecibo::where('planpago_id', $value)
+                                                        ->whereHas('recibo', function ($q) {
+                                                            $q->where('tipo_pago', 'normal')
+                                                                ->where('estado', '!=', 'A'); // Excluir anulados
+                                                        })->exists();
+
+                                                    if ($existeReciboNormal) {
+                                                        $fail('Esta cuota ya tiene un recibo normal asociado. Use pago parcial si desea agregar otro pago.');
+                                                    }
+                                                }
+                                            };
+                                        }
+                                    ]),
 
                                 Forms\Components\TextInput::make('monto_principal')
+                                    ->label('Principal')
                                     ->numeric()
                                     ->required()
-                                    ->minValue(0),
+                                    ->minValue(0)
+                                    ->maxValue(function (Forms\Get $get) {
+                                        if ($planpago = \App\Models\Planpago::find($get('planpago_id'))) {
+                                            return $planpago->saldo_principal;
+                                        }
+                                        return 0;
+                                    }),
 
                                 Forms\Components\TextInput::make('monto_intereses')
+                                    ->label('Interés')
                                     ->numeric()
                                     ->required()
-                                    ->minValue(0),
-
-                                Forms\Components\TextInput::make('monto_seguro')
-                                    ->numeric()
-                                    ->required()
-                                    ->minValue(0),
-
-                                Forms\Components\TextInput::make('monto_otros')
-                                    ->numeric()
-                                    ->required()
-                                    ->minValue(0),
+                                    ->minValue(0)
+                                    ->maxValue(function (Forms\Get $get) {
+                                        if ($planpago = \App\Models\Planpago::find($get('planpago_id'))) {
+                                            return $planpago->saldo_interes;
+                                        }
+                                        return 0;
+                                    }),
 
                                 Forms\Components\TextInput::make('monto_cuota')
+                                    ->label('Total Cuota')
                                     ->numeric()
                                     ->required()
                                     ->minValue(0)
                                     ->disabled(),
                             ])
-                            ->columns(5)
+                            ->columns(3)
                             ->minItems(1)
+                            ->maxItems(1) // Solo permitir una cuota por recibo
                             ->columnSpanFull()
                     ])
             ]);
@@ -159,6 +232,19 @@ class ReciboResource extends Resource
                 Tables\Columns\TextColumn::make('prestamo.numero_prestamo')
                     ->searchable()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('tipo_pago')
+                    ->badge()
+                    ->formatStateUsing(fn($state) => match ($state) {
+                        'normal' => 'Normal',
+                        'parcial' => 'Parcial',
+                        default => $state
+                    })
+                    ->color(fn($state) => match ($state) {
+                        'normal' => 'primary',
+                        'parcial' => 'warning',
+                        default => 'gray'
+                    }),
 
                 Tables\Columns\TextColumn::make('banco.nombre_banco')
                     ->label('Banco')
@@ -196,57 +282,7 @@ class ReciboResource extends Resource
                         default => 'gray'
                     })
             ])
-            ->filters([
-                // Filtros correctos (solo SelectFilter y Filter)
-                Tables\Filters\SelectFilter::make('tipo_recibo')
-                    ->options([
-                        'CN' => 'Normal',
-                        'CA' => 'Anticipado',
-                        'LI' => 'Liquidación'
-                    ]),
-
-                Tables\Filters\SelectFilter::make('estado')
-                    ->options([
-                        'I' => 'Incluido',
-                        'C' => 'Completado',
-                        'A' => 'Anulado'
-                    ])
-                    ->default('I') // Filtro por defecto
-            ])
             ->actions([
-                Tables\Actions\Action::make('completar')
-                    ->label('Completar')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success')
-                    ->action(function (Recibo $record) {
-                        $record->completar();
-                        Notification::make()
-                            ->title('Recibo completado')
-                            ->success()
-                            ->send();
-                    })
-                    ->visible(fn($record) => $record->estado == 'I')
-                    ->requiresConfirmation()
-                    ->modalHeading('Completar Recibo')
-                    ->modalDescription('¿Estás seguro de marcar este recibo como completado? Esta acción no se puede deshacer.')
-                    ->modalSubmitActionLabel('Sí, completar'),
-
-                Tables\Actions\Action::make('anular')
-                    ->label('Anular')
-                    ->icon('heroicon-o-x-circle')
-                    ->color('danger')
-                    ->action(function (Recibo $record) {
-                        $record->anular();
-                        Notification::make()
-                            ->title('Recibo anulado')
-                            ->success()
-                            ->send();
-                    })
-                    ->visible(fn($record) => $record->estado == 'I')
-                    ->requiresConfirmation(),
-
-                // Eliminé la acción duplicada de 'anular' que estaba más abajo
-
                 Tables\Actions\Action::make('imprimir')
                     ->label('Imprimir')
                     ->icon('heroicon-o-printer')
@@ -255,9 +291,7 @@ class ReciboResource extends Resource
 
                 Tables\Actions\EditAction::make(),
             ])
-            ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make(),
-            ]);
+            ->bulkActions([]);
     }
 
     public static function getPages(): array
@@ -265,20 +299,31 @@ class ReciboResource extends Resource
         return [
             'index' => Pages\ListRecibos::route('/'),
             'create' => Pages\CreateRecibo::route('/create'),
-
         ];
     }
 
-    // app/Filament/Resources/ReciboResource.php
     public static function mutateFormDataBeforeSave(array $data): array
     {
         if (isset($data['detalles']) && is_array($data['detalles'])) {
+            // Validar que no exista recibo normal para esta cuota
+            if ($data['tipo_pago'] === 'normal') {
+                foreach ($data['detalles'] as $detalle) {
+                    $existeReciboNormal = \App\Models\DetalleRecibo::where('planpago_id', $detalle['planpago_id'])
+                        ->whereHas('recibo', function ($q) {
+                            $q->where('tipo_pago', 'normal')
+                                ->where('estado', '!=', 'A'); // Excluir anulados
+                        })->exists();
+
+                    if ($existeReciboNormal) {
+                        throw new \Exception('Esta cuota ya tiene un recibo normal asociado. No se puede crear otro recibo normal para la misma cuota.');
+                    }
+                }
+            }
+
             $data['detalles'] = array_map(function ($detalle) {
                 $montoCuota = (
                     ($detalle['monto_principal'] ?? 0) +
-                    ($detalle['monto_intereses'] ?? 0) +
-                    ($detalle['monto_seguro'] ?? 0) +
-                    ($detalle['monto_otros'] ?? 0)
+                    ($detalle['monto_intereses'] ?? 0)
                 );
 
                 return [
@@ -286,12 +331,15 @@ class ReciboResource extends Resource
                     'numero_cuota' => $detalle['numero_cuota'] ?? 1,
                     'monto_principal' => $detalle['monto_principal'] ?? 0,
                     'monto_intereses' => $detalle['monto_intereses'] ?? 0,
-                    'monto_seguro' => $detalle['monto_seguro'] ?? 0,
-                    'monto_otros' => $detalle['monto_otros'] ?? 0,
                     'monto_cuota' => $montoCuota,
                     'recibo_id' => $data['id'] ?? null
                 ];
             }, $data['detalles']);
+        }
+
+        // Si es pago normal, el monto del recibo debe ser igual al total de la cuota
+        if ($data['tipo_pago'] === 'normal' && isset($data['detalles'][0])) {
+            $data['monto_recibo'] = $data['detalles'][0]['monto_cuota'];
         }
 
         return $data;

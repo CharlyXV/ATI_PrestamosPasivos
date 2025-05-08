@@ -18,34 +18,5 @@ class ListPrestamos extends ListRecords
 {
     protected static string $resource = PrestamosResource::class;
 
-    protected function getHeaderActions(): array
-    {
-        return [
-            Actions\CreateAction::make(),
-            Action::make('import')
-             ->label('Importar Plan Pagos')
-             ->color('danger')
-             ->icon('heroicon-o-document-arrow-down')
-             ->form([
-                FileUpload::make('attachment'),
-             ])
-             ->action(function (array $data) {
-             
-                $file = public_path('storage/'. $data['attachment']);
-               
-                //dd($data);
-                //dd($file);
-
-                Excel::import(new PlanpagoImport, $file);
-
-
-                Notification::make()
-                ->Title('Importar Plan Pagos')
-                ->success()
-                ->send();
-                
-             })
- 
-        ];
-    }
+   
 }

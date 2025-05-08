@@ -2,11 +2,18 @@
 
 namespace App\Enums;
 
-enum PrestamoEstadoEnum : string
-
+enum PrestamoEstadoEnum: string
 {
-case A  =  'Activo';
-case L  = 'Liquidado';
-case I  = 'Incluido';
-
+    case A = 'A';
+    case L = 'L';
+    case I = 'I';
+    
+    public function label(): string
+    {
+        return match($this) {
+            self::A => 'Activos',
+            self::L => 'Liquidados',
+            self::I => 'Incluidos',
+        };
+    }
 }

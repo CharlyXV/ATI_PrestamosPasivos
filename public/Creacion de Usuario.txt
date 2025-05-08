@@ -1,0 +1,21 @@
+Creación de ususario
+
+php artisan tinker 
+
+$user = App\Models\User::create([
+    'name' => 'Carlos Vindas',
+    'email' => 'carlosvindas56@gmail.com',
+    'password' => bcrypt('password123')
+]);
+
+$user->username; 
+
+
+$user = App\Models\User::create([
+    'username' => 'c-cvindas',
+    'name' => 'Carlos Vindas',
+    'email' => 'carlosvindas56@gmail.com',
+    'password' => bcrypt('83490976Ca.'),
+    'created_at' => now(),
+    'updated_at' => now()
+]);

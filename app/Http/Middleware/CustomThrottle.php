@@ -24,7 +24,7 @@ class CustomThrottle
             return response()->json([
                 'error' => true,
                 'success' => false,
-                'errorMessage' => 'Ha realizado muchas solicitudes, intente de nuevo más tarde.'
+                'errorMessage' => 'Ha realizado muchas solicitudes, intente de nuevo mas tarde.'
             ], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
@@ -35,8 +35,6 @@ class CustomThrottle
 
     protected function resolveRequestSignature(Request $request)
     {
-        // Personaliza la clave basada en el IP y el usuario autenticado (si existe)
-        $userId = $request->user() ? $request->user()->id : 'guest';
-        return sha1($request->ip() . '|' . $userId);
+        return sha1($request->ip()); // Puedes personalizar el key basado en IP, user ID, etc.
     }
 }

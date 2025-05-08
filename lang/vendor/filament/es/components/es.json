@@ -1,0 +1,31 @@
+{
+    "Filament": {
+        "Create": "Crear",
+        "Delete": "Eliminar",
+        "Edit": "Editar",
+        "Save": "Guardar",
+        "Saved!": "¡Guardado!",
+        "Actions": "Acciones",
+        "Are you sure you want to delete this record?": "¿Estás seguro de que deseas eliminar este registro?",
+        "Cancel": "Cancelar",
+        "Close": "Cerrar",
+        "Create & Create Another": "Crear y agregar otro",
+        "Delete record": "Eliminar registro",
+        "Edit record": "Editar registro",
+        "List": "Lista",
+        "New": "Nuevo",
+        "No": "No",
+        "Yes": "Sí",
+        "Importar Excel": "Importar Excel",
+        "Archivo Excel": "Archivo Excel",
+        "Importación exitosa": "Importación completada exitosamente",
+        "Error en la importación": "Ocurrió un error durante la importación",
+        "Nuevo Préstamo": "Nuevo Préstamo",
+        "Editar Préstamo": "Editar Préstamo",
+        "Ver Préstamo": "Ver Préstamo",
+        "Gestión de Préstamos": "Gestión de Préstamos"
+    }
+}
+
+
+

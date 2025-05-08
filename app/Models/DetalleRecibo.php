@@ -12,32 +12,35 @@ class DetalleRecibo extends Model
     
     protected $table = 'detalle_recibo';
 
-    // app/Models/DetalleRecibo.php
-protected $fillable = [
-    'recibo_id',
-    'planpago_id',
-    'numero_cuota',
-    'monto_principal',
-    'monto_intereses',
-    'monto_seguro',
-    'monto_otros',
-    'monto_cuota'
-];
+    protected $fillable = [
+        'recibo_id',
+        'planpago_id',
+        'numero_cuota',
+        'monto_principal',
+        'monto_intereses',
+        'monto_cuota',
+        'monto_principal_original',
+        'monto_intereses_original',
+    ];
 
-protected static function boot()
-{
-    parent::boot();
+    protected $casts = [
+        'monto_principal' => 'decimal:2',
+        'monto_intereses' => 'decimal:2',
+        'monto_cuota' => 'decimal:2',
+    ];
 
-    static::creating(function ($model) {
-        $model->numero_cuota = $model->numero_cuota ?? optional($model->planpago)->numero_cuota ?? 0;
-        $model->monto_cuota = $model->monto_cuota ?? (
-            ($model->monto_principal ?? 0) +
-            ($model->monto_intereses ?? 0) +
-            ($model->monto_seguro ?? 0) +
-            ($model->monto_otros ?? 0)
-        );
-    });
-}
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            $model->numero_cuota = $model->numero_cuota ?? optional($model->planpago)->numero_cuota ?? 0;
+            $model->monto_cuota = $model->monto_cuota ?? (
+                ($model->monto_principal ?? 0) +
+                ($model->monto_intereses ?? 0)
+            );
+        });
+    }
 
     public function recibo(): BelongsTo
     {
@@ -48,7 +51,4 @@ protected static function boot()
     {
         return $this->belongsTo(Planpago::class);
     }
-
-    
-
 }

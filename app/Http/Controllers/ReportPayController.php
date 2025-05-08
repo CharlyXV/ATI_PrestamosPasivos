@@ -56,12 +56,6 @@ class ReportPayController extends Controller
         }
     }
 
-
-
-
-
-
-
     public function store(Request $request)
     {
         $validatedData = $this->validatePrestamoData($request);
@@ -186,14 +180,10 @@ class ReportPayController extends Controller
                     'fecha_pago' => $this->calculateDueDate($prestamo->formalizacion, $i * $mesesEntrePagos),
                     'monto_principal' => $this->roundAmount($principalPayment),
                     'monto_interes' => $this->roundAmount($interestPayment),
-                    'monto_seguro' => 0, // Puedes ajustar según necesidades
-                    'monto_otros' => 0,  // Puedes ajustar según necesidades
                     'saldo_prestamo' => $this->roundAmount(max($remainingBalance, 0)),
                     'tasa_interes' => $prestamo->tasa_interes,
                     'saldo_principal' => $this->roundAmount($principalPayment),
                     'saldo_interes' => $this->roundAmount($interestPayment),
-                    'saldo_seguro' => 0,
-                    'saldo_otros' => 0,
                     'observaciones' => $this->generatePaymentDescription($i, $numPagos, $periodicidad),
                     'plp_estados' => 'pendiente'
                 ]);

@@ -1,4 +1,3 @@
-
 @props([
     'columns',
     'record',

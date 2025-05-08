@@ -1,0 +1,13 @@
+.filament-sidebar-group .filament-sidebar-item {
+    border-left: 3px solid #3b82f6; /* Borde azul */
+    margin-left: 0.5rem;
+    padding-left: 0.75rem;
+}
+
+.filament-sidebar-group div:first-child {
+    color: #3b82f6; /* Color azul para el título */
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+}

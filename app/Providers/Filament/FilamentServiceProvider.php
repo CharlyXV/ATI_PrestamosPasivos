@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Providers;
+namespace App\Providers\Filament;
 
 use Filament\Forms;
 use Filament\Tables;
